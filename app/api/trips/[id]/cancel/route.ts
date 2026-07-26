@@ -1,16 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TripStatus } from "@prisma/client";
+import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireCurrentUser } from "@/lib/current-user";
+import { requireRole } from "@/lib/current-user";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const user = await requireCurrentUser();
+  const user = await requireRole(Role.VIEWER);
+  if (!user) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const trip = await db.trip.findUnique({ where: { id: params.id } });
+  if (!trip || trip.viewerId !== user.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const cancellableStatuses: TripStatus[] = [
+    TripStatus.REQUESTED,
+    TripStatus.ACCEPTED,
+  ];
+  if (!cancellableStatuses.includes(trip.status)) {
+    return NextResponse.json(
+      { error: "Trip cannot be cancelled" },
+      { status: 409 }
+    );
+  }
 
   const result = await db.trip.updateMany({
-    where: { id: params.id, viewerId: user.id, status: TripStatus.REQUESTED },
+    where: {
+      id: params.id,
+      viewerId: user.id,
+      status: { in: cancellableStatuses },
+    },
     data: { status: TripStatus.CANCELLED },
   });
 
@@ -21,6 +44,6 @@ export async function POST(
     );
   }
 
-  const trip = await db.trip.findUnique({ where: { id: params.id } });
-  return NextResponse.json({ trip });
+  const updated = await db.trip.findUnique({ where: { id: params.id } });
+  return NextResponse.json({ trip: updated });
 }

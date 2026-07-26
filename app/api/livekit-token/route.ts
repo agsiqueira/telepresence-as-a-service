@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { TripStatus } from "@prisma/client";
+import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireCurrentUser } from "@/lib/current-user";
 import { mintLiveKitToken } from "@/lib/livekit";
@@ -14,8 +14,11 @@ export async function POST(req: NextRequest) {
   }
 
   const trip = await db.trip.findUnique({ where: { id: tripId } });
+  const isViewer = user.role === Role.VIEWER && trip?.viewerId === user.id;
+  const isOperator =
+    user.role === Role.OPERATOR && trip?.operatorId === user.id;
 
-  if (!trip || (trip.viewerId !== user.id && trip.operatorId !== user.id)) {
+  if (!trip || (!isViewer && !isOperator)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -23,7 +26,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Trip is not active" }, { status: 409 });
   }
 
-  const canPublish = trip.operatorId === user.id;
+  const canPublish = isOperator;
 
   const token = await mintLiveKitToken({
     room: trip.livekitRoom,

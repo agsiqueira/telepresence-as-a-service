@@ -1,4 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { Role, type User } from "@prisma/client";
 import { db } from "@/lib/db";
 
 export async function getCurrentUser() {
@@ -26,4 +27,9 @@ export async function requireCurrentUser() {
     throw new Error("Unauthenticated");
   }
   return user;
+}
+
+export async function requireRole(requiredRole: Role): Promise<User | null> {
+  const user = await requireCurrentUser();
+  return user.role === requiredRole ? user : null;
 }

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { TripStatus } from "@prisma/client";
+import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireCurrentUser } from "@/lib/current-user";
+import { requireRole } from "@/lib/current-user";
 
 const ACTIVE_STATUSES: TripStatus[] = [
   TripStatus.REQUESTED,
@@ -10,7 +10,11 @@ const ACTIVE_STATUSES: TripStatus[] = [
 ];
 
 export async function GET(req: NextRequest) {
-  const user = await requireCurrentUser();
+  const user = await requireRole(Role.OPERATOR);
+  if (!user) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { searchParams } = new URL(req.url);
 
   if (searchParams.get("mine")) {
@@ -33,7 +37,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireCurrentUser();
+  const user = await requireRole(Role.VIEWER);
+  if (!user) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = await req.json();
   const { destination, lat, lng } = body as {
     destination?: string;
