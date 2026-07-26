@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OPERATOR
+  VIEWER
+}
+
+enum TripStatus {
+  REQUESTED // viewer asked to visit somewhere, waiting for an operator
+  ACCEPTED  // an operator claimed it — LiveKit room is live
+  ENDED     // finished normally
+  CANCELLED // viewer cancelled before anyone accepted
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  name      String?
+  role      Role     @default(VIEWER)
+  online    Boolean  @default(false) // operator's "go online" toggle
+  createdAt DateTime @default(now())
+
+  tripsAsViewer   Trip[]     @relation("TripsAsViewer")
+  tripsAsOperator Trip[]     @relation("TripsAsOperator")
+  feedback        Feedback[]
+}
+
+model Trip {
+  id          String     @id @default(cuid())
+  viewer      User       @relation("TripsAsViewer", fields: [viewerId], references: [id])
+  viewerId    String
+  operator    User?      @relation("TripsAsOperator", fields: [operatorId], references: [id])
+  operatorId  String?
+  destination String
+  lat         Float?
+  lng         Float?
+  livekitRoom String     @unique
+  status      TripStatus @default(REQUESTED)
+  requestedAt DateTime   @default(now())
+  acceptedAt  DateTime?
+  endedAt     DateTime?
+
+  feedback Feedback[]
+
+  @@index([status])
+}
+
+model Feedback {
+  id           String   @id @default(cuid())
+  trip         Trip     @relation(fields: [tripId], references: [id])
+  tripId       String
+  viewer       User     @relation(fields: [viewerId], references: [id])
+  viewerId     String
+  presence     Int // 1-5, "I felt like I was really there"
+  mediaQuality Int // 1-5, "The video was clear enough to see details"
+  moodBefore   Int? // 0-10 VAS
+  moodAfter    Int? // 0-10 VAS
+  createdAt    DateTime @default(now())
+
+  @@index([tripId])
+}

@@ -1,0 +1,38 @@
+{
+  "name": "virtualtrip",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^5.7.5",
+    "@livekit/components-react": "^2.6.4",
+    "@livekit/components-styles": "^1.1.4",
+    "@prisma/client": "^5.19.1",
+    "livekit-client": "^2.5.7",
+    "livekit-server-sdk": "^2.7.2",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.35",
+    "postcss": "^8.4.40",
+    "prisma": "^5.19.1",
+    "tailwindcss": "^3.4.7",
+    "typescript": "^5.5.4"
+  }
+}
