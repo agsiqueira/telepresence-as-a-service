@@ -1,0 +1,18 @@
+import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+
+if (!process.env.PHASE3_TEST_DATABASE_URL) {
+  console.error("PHASE3_TEST_DATABASE_URL is required; refusing to contact a database.");
+  process.exit(2);
+}
+const env = { ...process.env, DATABASE_URL: process.env.PHASE3_TEST_DATABASE_URL };
+const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "scripts/tsconfig.phase3-db.json"], { stdio: "inherit", env });
+if (compile.status !== 0) process.exit(compile.status ?? 1);
+for (const module of ["marketplace", "profiles"]) {
+  const path = `.phase3-test-build/lib/${module}.js`;
+  writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', ""));
+}
+mkdirSync(".phase3-test-build/node_modules/@/lib", { recursive: true });
+const test = spawnSync(process.execPath, [".phase3-test-build/scripts/phase5a-db-integration.js"], { stdio: "inherit", env });
+rmSync(".phase3-test-build", { recursive: true, force: true });
+process.exit(test.status ?? 1);

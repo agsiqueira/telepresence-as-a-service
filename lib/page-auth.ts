@@ -15,5 +15,7 @@ export async function requirePageRole(requiredRole: Role): Promise<User> {
     return user;
   }
 
-  redirect(user.role === Role.VIEWER ? "/viewer" : "/operator");
+  if (user.role === Role.VIEWER) redirect("/viewer");
+  if (user.role === Role.OPERATOR) redirect("/operator");
+  redirect("/");
 }

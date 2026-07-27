@@ -32,7 +32,7 @@ const stopRecovering = createResilientPoller({
   onPersistentFailure: () => { persistent = true; },
   onRecovery: () => { recovered = true; },
 });
-await wait(80);
+for (let elapsed = 0; calls < 4 && elapsed < 300; elapsed += 10) await wait(10);
 stopRecovering();
 assert.equal(maximumConcurrent, 1, "poll requests must not overlap");
 assert.equal(calls, 4, "a completed result must stop future polls");

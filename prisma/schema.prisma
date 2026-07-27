@@ -8,8 +8,15 @@ datasource db {
 }
 
 enum Role {
+  ADMIN
   OPERATOR
   VIEWER
+}
+
+enum OperatorPilotStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
 }
 
 enum TripStatus {
@@ -31,15 +38,17 @@ enum OfferStatus {
 }
 
 model User {
-  id                 String   @id @default(cuid())
-  clerkId            String   @unique
-  name               String?
-  role               Role     @default(VIEWER)
-  online             Boolean  @default(false) // operator's "go online" toggle
+  id                       String   @id @default(cuid())
+  clerkId                  String   @unique
+  name                     String?
+  preferredLanguage        String?
+  accessibilityPreferences String[] @default([])
+  role                     Role     @default(VIEWER)
+  online                   Boolean  @default(false) // operator's "go online" toggle
   // Internal marketplace reservations claimed inside serializable transactions.
-  pendingOfferTripId String?
-  activeTripId       String?
-  createdAt          DateTime @default(now())
+  pendingOfferTripId       String?
+  activeTripId             String?
+  createdAt                DateTime @default(now())
 
   tripsAsViewer       Trip[]                @relation("TripsAsViewer")
   tripsAsOperator     Trip[]                @relation("TripsAsOperator")
@@ -75,17 +84,18 @@ model Destination {
 }
 
 model OperatorProfile {
-  id                        String   @id @default(cuid())
-  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId                    String   @unique
+  id                        String              @id @default(cuid())
+  user                      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                    String              @unique
   operatingArea             String
   serviceRadiusKm           Float
-  supportsCustom            Boolean  @default(false)
+  supportsCustom            Boolean             @default(false)
   languages                 String[]
   accessibilityCapabilities String[]
   durationOptions           Int[]
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
+  pilotStatus               OperatorPilotStatus @default(PENDING)
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
 }
 
 model OperatorDestination {

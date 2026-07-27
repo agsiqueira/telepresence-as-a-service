@@ -250,6 +250,8 @@ export function validateCreateTripInput(body: Record<string, unknown>): ServiceR
 }
 
 export function validateSettingsInput(body: Record<string, unknown>): ServiceResult<OperatorSettingsInput> {
+  const allowed = new Set(["operatingArea", "serviceRadiusKm", "supportsCustom", "languages", "accessibilityCapabilities", "durationOptions", "destinationIds"]);
+  if (Object.keys(body).some(key => !allowed.has(key))) return { ok: false, status: 400, error: "Unsupported service setting" };
   const operatingArea = typeof body.operatingArea === "string" ? body.operatingArea.trim() : "";
   const serviceRadiusKm = Number(body.serviceRadiusKm);
   const languages = normalizedList(body.languages, ALLOWED_LANGUAGES);

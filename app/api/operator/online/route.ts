@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/current-user";
-import { profileIsComplete } from "@/lib/marketplace";
+import { getCurrentUser } from "@/lib/current-user";
+import { evaluateOperatorReadiness } from "@/lib/profiles";
 
 export async function POST(req: NextRequest) {
-  const user = await requireRole(Role.OPERATOR);
-  if (!user) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+ try {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  if (user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
-  const online = Boolean(body?.online);
+  if (!body || typeof body !== "object" || Object.keys(body).some(key => key !== "online") || typeof body.online !== "boolean") return NextResponse.json({ error: "Online status is required" }, { status: 400 });
+  const online = body.online;
 
   const availability = await db.user.findUnique({
     where: { id: user.id },
@@ -25,11 +26,8 @@ export async function POST(req: NextRequest) {
   }
 
   if (online) {
-    const profile = await db.operatorProfile.findUnique({ where: { userId: user.id } });
-    const destinationCount = await db.operatorDestination.count({ where: { operatorId: user.id } });
-    if (!profileIsComplete(profile, destinationCount, profile?.supportsCustom ?? false)) {
-      return NextResponse.json({ error: "Complete your service setup before going online" }, { status: 409 });
-    }
+    const readiness = await evaluateOperatorReadiness(db, user.id);
+    if (!readiness.eligible) return NextResponse.json({ error: readiness.message, reason: readiness.code }, { status: 409 });
   }
 
   const updated = await db.user.updateMany({
@@ -48,4 +46,9 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ online });
+ } catch (error) {
+  if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  console.error("Operator availability update failed", error instanceof Error ? error.name : "UnknownError");
+  return NextResponse.json({ error: "Availability could not be updated" }, { status: 500 });
+ }
 }

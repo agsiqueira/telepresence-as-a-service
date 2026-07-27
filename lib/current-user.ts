@@ -13,7 +13,6 @@ export async function getCurrentUser() {
   const name =
     clerkUser?.firstName ??
     clerkUser?.username ??
-    clerkUser?.emailAddresses[0]?.emailAddress ??
     null;
 
   return db.user.upsert({
@@ -34,4 +33,9 @@ export async function requireCurrentUser() {
 export async function requireRole(requiredRole: Role): Promise<User | null> {
   const user = await getCurrentUser();
   return user?.role === requiredRole ? user : null;
+}
+
+export async function requireAdmin(): Promise<User | null> {
+  const user = await requireCurrentUser();
+  return user.role === Role.ADMIN ? user : null;
 }

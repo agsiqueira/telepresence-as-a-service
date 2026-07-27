@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   OfferStatus,
+  OperatorPilotStatus,
   Prisma,
   Role,
   TripStatus,
@@ -31,17 +32,25 @@ export function normalizedList(value: unknown, allowed: readonly string[], max =
 export function profileIsComplete(
   profile: Pick<
     OperatorProfile,
-    "operatingArea" | "serviceRadiusKm" | "languages" | "durationOptions"
+    "operatingArea" | "serviceRadiusKm" | "languages" | "accessibilityCapabilities" | "durationOptions"
   > | null,
   destinationCount: number,
   supportsCustom: boolean
 ) {
+  if (!profile) return false;
   return Boolean(
-    profile?.operatingArea.trim() &&
+    profile.operatingArea.trim().length >= 2 &&
+      profile.operatingArea.trim().length <= 80 &&
+      Number.isFinite(profile.serviceRadiusKm) &&
       profile.serviceRadiusKm >= 1 &&
       profile.serviceRadiusKm <= 100 &&
       profile.languages.length > 0 &&
+      profile.languages.length <= 8 &&
+      profile.languages.every(value => ALLOWED_LANGUAGES.includes(value as never)) &&
+      profile.accessibilityCapabilities.length <= 8 &&
+      profile.accessibilityCapabilities.every(value => ALLOWED_ACCESSIBILITY.includes(value as never)) &&
       profile.durationOptions.length > 0 &&
+      profile.durationOptions.every(value => ALLOWED_DURATIONS.includes(value as never)) &&
       (destinationCount > 0 || supportsCustom)
   );
 }
@@ -71,6 +80,7 @@ function eligibleOperatorWhere(trip: TripForMatching): Prisma.UserWhereInput {
           mode: "insensitive",
         },
         serviceRadiusKm: { gte: 1 },
+        pilotStatus: OperatorPilotStatus.APPROVED,
         durationOptions: trip.requestedDuration
           ? { has: trip.requestedDuration }
           : undefined,
@@ -118,6 +128,7 @@ export async function assignNextOperator(
         online: true,
         pendingOfferTripId: null,
         activeTripId: null,
+        operatorProfile: { is: { pilotStatus: OperatorPilotStatus.APPROVED } },
       },
       data: { pendingOfferTripId: trip.id },
     });

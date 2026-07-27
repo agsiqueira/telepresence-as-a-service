@@ -18,6 +18,9 @@
     "test:viewer-runtime": "node scripts/validate-viewer-runtime.mjs",
     "test:polling": "node scripts/validate-polling.mjs",
     "test:active-visit": "node scripts/validate-active-visit-recovery.mjs",
+    "test:phase5a": "node scripts/validate-phase5a.mjs",
+    "test:phase5a:services": "node scripts/validate-phase5a-services.mjs",
+    "test:phase5a:db": "node scripts/run-phase5a-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"
   },

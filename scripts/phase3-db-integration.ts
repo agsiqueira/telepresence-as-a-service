@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { OfferStatus, Prisma, PrismaClient, Role, TripStatus } from "@prisma/client";
+import { OfferStatus, OperatorPilotStatus, Prisma, PrismaClient, Role, TripStatus } from "@prisma/client";
 import { assignNextOperator, expireAndReassignOffers } from "../lib/marketplace";
 import {
   acceptTripOffer,
@@ -32,7 +32,7 @@ async function destination(city = "Pilot City", active = true) {
 }
 async function operator(destinationId: string, options: { area?: string; online?: boolean; language?: string; access?: string[]; serves?: boolean } = {}) {
   const value = await user(Role.OPERATOR, options.online ?? true);
-  await db.operatorProfile.create({ data: { userId: value.id, operatingArea: options.area ?? "Pilot City", serviceRadiusKm: 25, languages: [options.language ?? "English"], accessibilityCapabilities: options.access ?? [], durationOptions: [30] } });
+  await db.operatorProfile.create({ data: { userId: value.id, operatingArea: options.area ?? "Pilot City", serviceRadiusKm: 25, languages: [options.language ?? "English"], accessibilityCapabilities: options.access ?? [], durationOptions: [30], pilotStatus: OperatorPilotStatus.APPROVED } });
   if (options.serves !== false) await db.operatorDestination.create({ data: { operatorId: value.id, destinationId } });
   return value;
 }

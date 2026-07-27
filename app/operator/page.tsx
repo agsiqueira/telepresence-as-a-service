@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
+import ProfileSettings from "@/components/ProfileSettings";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
@@ -62,6 +63,7 @@ export default function OperatorPage() {
   const [mediaState, setMediaState] = useState<"idle" | "preparing" | "ready" | "failed">("idle");
   const [mediaRetry, setMediaRetry] = useState(0);
   const [tripEnded, setTripEnded] = useState(false);
+  const [pilotStatus, setPilotStatus] = useState<"PENDING" | "APPROVED" | "SUSPENDED" | null>(null);
   const [pollingMessage, setPollingMessage] = useState("");
   const [pollRetry, setPollRetry] = useState(0);
   const endingRef = useRef(false);
@@ -78,7 +80,7 @@ export default function OperatorPage() {
         destinationIds?: string[];
         online?: boolean;
         complete?: boolean;
-        profile?: { operatingArea: string; serviceRadiusKm: number; supportsCustom: boolean; languages: string[]; accessibilityCapabilities: string[]; durationOptions: number[] };
+        profile?: { operatingArea: string; serviceRadiusKm: number; supportsCustom: boolean; languages: string[]; accessibilityCapabilities: string[]; durationOptions: number[]; pilotStatus: "PENDING" | "APPROVED" | "SUSPENDED" };
       }>(response))
       .then((data) => {
         setDestinations(data.destinations ?? []);
@@ -87,6 +89,7 @@ export default function OperatorPage() {
         setSetupComplete(Boolean(data.complete));
         setEditing(!data.complete);
         if (data.profile) {
+          setPilotStatus(data.profile.pilotStatus);
           setOperatingArea(data.profile.operatingArea);
           setServiceRadiusKm(data.profile.serviceRadiusKm);
           setSupportsCustom(data.profile.supportsCustom);
@@ -304,6 +307,8 @@ export default function OperatorPage() {
       <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase text-spartan-green">Operator marketplace</p><h1 className="text-3xl font-bold">Service dashboard</h1></div><button type="button" disabled={!setupComplete} onClick={toggleOnline} className={`min-h-12 rounded-full px-5 font-semibold disabled:opacity-40 ${online ? "bg-spartan-green text-white" : "border border-spartan-green text-spartan-green"}`}>{online ? "Online" : "Go online"}</button></div>
       {message && <p className="mt-4 rounded-lg bg-gray-100 p-3 text-sm" role="status">{message}</p>}
       <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />
+      {pilotStatus === "PENDING" && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">Your operator profile is awaiting pilot approval.</p>}
+      {pilotStatus === "SUSPENDED" && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">Your pilot participation is suspended. You cannot accept new visits.</p>}
 
       {(editing || !setupComplete) ? (
         <section className="mt-6 rounded-2xl border p-5"><h2 className="text-xl font-bold">Service setup</h2><p className="mt-1 text-sm text-gray-600">Complete the required settings before going online.</p>
@@ -321,6 +326,7 @@ export default function OperatorPage() {
       {!editing && online && !offer && <div className="mt-8 rounded-2xl bg-gray-950 p-6 text-white"><p className="font-semibold">Online and ready</p><p className="mt-1 text-sm text-gray-300">Waiting for a compatible visit request…</p></div>}
       {!editing && offer && <section className="mt-8 overflow-hidden rounded-2xl border-2 border-gray-950 bg-white shadow-xl"><div className="bg-gray-950 p-5 text-white"><div className="flex justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">Immediate visit offer</p><h2 className="mt-1 text-2xl font-bold">{offer.customDestination || offer.destination}</h2></div><p className="shrink-0 text-lg font-bold" aria-label={`Offer expires in ${offerSeconds} seconds`}>{offerSeconds}s</p></div></div><dl className="grid gap-3 p-5 text-sm"><div><dt className="text-gray-500">Starting-point preference</dt><dd className="font-medium">{offer.meetingArea || "No starting preference provided. Choose an appropriate place to begin the video visit."}</dd></div><div><dt className="text-gray-500">Duration</dt><dd>{offer.requestedDuration} minutes</dd></div><div><dt className="text-gray-500">Language</dt><dd>{offer.preferredLanguage || "No preference"}</dd></div>{offer.accessibilityNeeds.length > 0 && <div><dt className="text-gray-500">Accessibility</dt><dd>{offer.accessibilityNeeds.join(", ")}</dd></div>}{offer.viewerNote && <div><dt className="text-gray-500">Visit instructions</dt><dd>{offer.viewerNote}</dd></div>}</dl><div className="grid grid-cols-2 gap-3 p-5 pt-0"><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={declineOffer} className="min-h-12 rounded-lg border font-semibold disabled:opacity-50">Decline</button><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={acceptOffer} className="min-h-12 rounded-lg bg-spartan-green font-semibold text-white disabled:opacity-50">Accept</button></div></section>}
       {!editing && !offer && <section className="mt-8" aria-labelledby="operator-history-heading"><h2 id="operator-history-heading" className="text-xl font-semibold">Recent offers and visits</h2>{history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No offer history yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map((item, index) => <li key={`${item.trip.id}-${index}`} className="p-3"><p className="font-medium">{item.trip.destination}</p><p className="text-sm text-gray-600">Offer {item.status.toLowerCase()} · Visit {item.trip.status.replaceAll("_", " ").toLowerCase()}</p></li>)}</ul>}</section>}
+      <ProfileSettings role="operator" />
     </div>
   );
 }
