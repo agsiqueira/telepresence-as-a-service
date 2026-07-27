@@ -130,7 +130,12 @@ export async function assignNextOperator(
         status: TripStatus.REQUESTED,
         offeredOperatorId: null,
       },
-      data: { offeredOperatorId: operator.id, offerExpiresAt: expiresAt },
+      data: {
+        offeredOperatorId: operator.id,
+        offerExpiresAt: expiresAt,
+        offeredAt: now,
+        status: TripStatus.OFFERED,
+      },
     });
     if (claimed.count !== 1) {
       await tx.user.updateMany({
@@ -147,6 +152,14 @@ export async function assignNextOperator(
     });
     return operator.id;
   }
+
+  await tx.trip.updateMany({
+    where: { id: trip.id, status: TripStatus.REQUESTED, offeredOperatorId: null },
+    data: {
+      status: TripStatus.NO_OPERATOR_AVAILABLE,
+      noOperatorAvailableAt: now,
+    },
+  });
   return null;
 }
 
@@ -156,7 +169,7 @@ export async function expireAndReassignOffers(
 ) {
   const expired = await tx.trip.findMany({
     where: {
-      status: TripStatus.REQUESTED,
+      status: TripStatus.OFFERED,
       offeredOperatorId: { not: null },
       offerExpiresAt: { lte: now },
     },
@@ -168,11 +181,15 @@ export async function expireAndReassignOffers(
     const cleared = await tx.trip.updateMany({
       where: {
         id: trip.id,
-        status: TripStatus.REQUESTED,
+        status: TripStatus.OFFERED,
         offeredOperatorId: trip.offeredOperatorId,
         offerExpiresAt: { lte: now },
       },
-      data: { offeredOperatorId: null, offerExpiresAt: null },
+      data: {
+        status: TripStatus.REQUESTED,
+        offeredOperatorId: null,
+        offerExpiresAt: null,
+      },
     });
     if (cleared.count !== 1) continue;
     const history = await tx.tripOffer.updateMany({

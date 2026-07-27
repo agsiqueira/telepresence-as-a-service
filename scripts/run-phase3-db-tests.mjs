@@ -14,7 +14,7 @@ const compile = spawnSync(
 );
 if (compile.error) throw compile.error;
 if (compile.status !== 0) process.exit(compile.status ?? 1);
-for (const compiledServerModule of [".phase3-test-build/lib/marketplace.js", ".phase3-test-build/lib/phase3-services.js"]) {
+for (const compiledServerModule of [".phase3-test-build/lib/marketplace.js", ".phase3-test-build/lib/phase3-services.js", ".phase3-test-build/lib/trip-lifecycle.js"]) {
   writeFileSync(compiledServerModule, readFileSync(compiledServerModule, "utf8").replace('require("server-only");', ""));
 }
 const test = spawnSync(process.execPath, [".phase3-test-build/scripts/phase3-db-integration.js"], {

@@ -13,10 +13,14 @@ enum Role {
 }
 
 enum TripStatus {
-  REQUESTED // viewer asked to visit somewhere, waiting for an operator
-  ACCEPTED // an operator claimed it — LiveKit room is live
-  ENDED // finished normally
-  CANCELLED // viewer cancelled before anyone accepted
+  REQUESTED
+  OFFERED
+  ACCEPTED
+  IN_PROGRESS
+  ENDED
+  FEEDBACK_COMPLETED
+  CANCELLED
+  NO_OPERATOR_AVAILABLE
 }
 
 enum OfferStatus {
@@ -95,32 +99,40 @@ model OperatorDestination {
 }
 
 model Trip {
-  id                 String       @id @default(cuid())
-  viewer             User         @relation("TripsAsViewer", fields: [viewerId], references: [id])
-  viewerId           String
-  operator           User?        @relation("TripsAsOperator", fields: [operatorId], references: [id])
-  operatorId         String?
-  offeredOperator    User?        @relation("OfferedOperator", fields: [offeredOperatorId], references: [id])
-  offeredOperatorId  String?
-  destinationRef     Destination? @relation(fields: [destinationId], references: [id])
-  destinationId      String?
-  destination        String
-  operatingArea      String?
-  meetingArea        String?
-  requestedDuration  Int?
-  viewerNote         String?
-  preferredLanguage  String?
-  accessibilityNeeds String[]     @default([])
-  customDestination  String?
-  immediate          Boolean      @default(true)
-  offerExpiresAt     DateTime?
-  lat                Float?
-  lng                Float?
-  livekitRoom        String       @unique
-  status             TripStatus   @default(REQUESTED)
-  requestedAt        DateTime     @default(now())
-  acceptedAt         DateTime?
-  endedAt            DateTime?
+  id                    String       @id @default(cuid())
+  viewer                User         @relation("TripsAsViewer", fields: [viewerId], references: [id])
+  viewerId              String
+  operator              User?        @relation("TripsAsOperator", fields: [operatorId], references: [id])
+  operatorId            String?
+  offeredOperator       User?        @relation("OfferedOperator", fields: [offeredOperatorId], references: [id])
+  offeredOperatorId     String?
+  destinationRef        Destination? @relation(fields: [destinationId], references: [id])
+  destinationId         String?
+  destination           String
+  operatingArea         String?
+  meetingArea           String?
+  requestedDuration     Int?
+  viewerNote            String?
+  preferredLanguage     String?
+  accessibilityNeeds    String[]     @default([])
+  customDestination     String?
+  immediate             Boolean      @default(true)
+  offerExpiresAt        DateTime?
+  lat                   Float?
+  lng                   Float?
+  livekitRoom           String       @unique
+  status                TripStatus   @default(REQUESTED)
+  requestedAt           DateTime     @default(now())
+  offeredAt             DateTime?
+  acceptedAt            DateTime?
+  startedAt             DateTime?
+  endedAt               DateTime?
+  cancelledAt           DateTime?
+  cancelledBy           Role?
+  noOperatorAvailableAt DateTime?
+  feedbackCompletedAt   DateTime?
+  feedbackSkippedAt     DateTime?
+  retryOfTripId         String?      @unique
 
   feedback Feedback[]
   offers   TripOffer[]

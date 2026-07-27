@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Role } from "@prisma/client";
+import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireCurrentUser } from "@/lib/current-user";
 import { assignWaitingTrips, expireAndReassignOffers } from "@/lib/marketplace";
@@ -18,7 +18,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (isViewer && trip.status === "REQUESTED") {
+  if (isViewer && (trip.status === TripStatus.REQUESTED || trip.status === TripStatus.OFFERED)) {
     await db.$transaction(async (tx) => {
       await expireAndReassignOffers(tx);
       await assignWaitingTrips(tx);
@@ -38,6 +38,13 @@ export async function GET(
       status: trip.status,
       requestedAt: trip.requestedAt,
       acceptedAt: trip.acceptedAt,
+      offeredAt: trip.offeredAt,
+      startedAt: trip.startedAt,
+      endedAt: trip.endedAt,
+      cancelledAt: trip.cancelledAt,
+      noOperatorAvailableAt: trip.noOperatorAvailableAt,
+      feedbackCompletedAt: trip.feedbackCompletedAt,
+      feedbackSkippedAt: trip.feedbackSkippedAt,
       hasOffer: Boolean(trip.offeredOperatorId && trip.offerExpiresAt),
     },
   });

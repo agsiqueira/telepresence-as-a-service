@@ -7,7 +7,27 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "../.phase3-test-build",
-    "rootDir": ".."
+    "rootDir": "..",
+    "baseUrl": "..",
+    "paths": { "@/*": ["./*"] }
   },
-  "include": ["phase3-db-integration.ts", "../lib/marketplace.ts", "../lib/phase3-services.ts"]
+  "include": [
+    "phase3-db-integration.ts",
+    "phase4-db-integration.ts",
+    "../lib/marketplace.ts",
+    "../lib/phase3-services.ts",
+    "../lib/trip-lifecycle.ts",
+    "../lib/db.ts",
+    "../lib/current-user.ts",
+    "../app/api/destinations/route.ts",
+    "../app/api/operator/offers/route.ts",
+    "../app/api/operator/settings/route.ts",
+    "../app/api/trips/[id]/accept/route.ts",
+    "../app/api/operator/offers/[id]/decline/route.ts"
+    ,"../app/api/trips/[id]/start/route.ts"
+    ,"../app/api/trips/current/route.ts"
+    ,"../app/api/trips/history/route.ts"
+    ,"../app/api/trips/[id]/retry/route.ts"
+    ,"../app/api/feedback/skip/route.ts"
+  ]
 }

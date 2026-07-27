@@ -13,6 +13,7 @@ import {
   updateOperatorSettings,
   type OperatorSettingsInput,
 } from "../lib/phase3-services";
+import { startTrip } from "../lib/trip-lifecycle";
 
 if (!process.env.PHASE3_TEST_DATABASE_URL) throw new Error("PHASE3_TEST_DATABASE_URL is required");
 if (process.env.DATABASE_URL !== process.env.PHASE3_TEST_DATABASE_URL) throw new Error("Unsafe database mapping");
@@ -150,7 +151,7 @@ async function main() {
     const assigned = (await db.trip.findUniqueOrThrow({ where: { id: trip2.id } })).offeredOperatorId!;
     await race([acceptTripOffer(db, assigned, trip2.id), updateOperatorSettings(db, assigned, settings(d.id, 52))]);
     const finalTrip = await db.trip.findUniqueOrThrow({ where: { id: trip2.id } }); const finalOperator = await db.user.findUniqueOrThrow({ where: { id: assigned } });
-    assert.ok(finalOperator.pendingOfferTripId === trip2.id || finalOperator.activeTripId === trip2.id); assert.equal((await db.operatorProfile.findUniqueOrThrow({ where: { userId: assigned } })).serviceRadiusKm, 25); assert.ok(([TripStatus.REQUESTED, TripStatus.ACCEPTED] as TripStatus[]).includes(finalTrip.status)); void op2;
+    assert.ok(finalOperator.pendingOfferTripId === trip2.id || finalOperator.activeTripId === trip2.id); assert.equal((await db.operatorProfile.findUniqueOrThrow({ where: { userId: assigned } })).serviceRadiusKm, 25); assert.ok(([TripStatus.OFFERED, TripStatus.ACCEPTED] as TripStatus[]).includes(finalTrip.status)); void op2;
   });
 
   await test("shared cancellation versus acceptance", async () => {
@@ -172,7 +173,7 @@ async function main() {
   await test("shared ending is idempotent and protects newer active reservation", async () => {
     const viewer = await user(Role.VIEWER), op = await operator(d.id), trip = await rawTrip(viewer.id, d.id); await serial(tx => assignNextOperator(tx, trip.id)); const assigned = (await db.trip.findUniqueOrThrow({ where: { id: trip.id } })).offeredOperatorId!; await acceptTripOffer(db, assigned, trip.id);
     const newerViewer = await user(Role.VIEWER); const newer = await rawTrip(newerViewer.id, d.id, { status: TripStatus.ACCEPTED, operatorId: assigned, acceptedAt: new Date() }); await db.user.update({ where: { id: assigned }, data: { activeTripId: newer.id } });
-    assert.equal((await endAcceptedTrip(db, viewer.id, Role.VIEWER, trip.id)).ok, true); assert.equal((await endAcceptedTrip(db, viewer.id, Role.VIEWER, trip.id)).ok, true);
+    assert.equal((await startTrip(db, viewer.id, Role.VIEWER, trip.id)).ok, true); assert.equal((await endAcceptedTrip(db, viewer.id, Role.VIEWER, trip.id)).ok, true); assert.equal((await endAcceptedTrip(db, viewer.id, Role.VIEWER, trip.id)).ok, true);
     assert.equal((await db.trip.findUniqueOrThrow({ where: { id: trip.id } })).status, TripStatus.ENDED); assert.equal((await db.user.findUniqueOrThrow({ where: { id: assigned } })).activeTripId, newer.id); void op;
   });
 
@@ -193,10 +194,12 @@ async function main() {
   });
 
   await test("shared duplicate viewer submission", async () => {
-    const viewer = await user(Role.VIEWER); const input = requestInput(d.id);
+    const viewer = await user(Role.VIEWER); await operator(d.id); const input = requestInput(d.id);
     const results = await race([createTripRequest(db, viewer.id, input, () => `${run}-${randomUUID()}`), createTripRequest(db, viewer.id, input, () => `${run}-${randomUUID()}`)]);
-    assert.equal(await db.trip.count({ where: { viewerId: viewer.id, status: { in: [TripStatus.REQUESTED, TripStatus.ACCEPTED] } } }), 1);
-    assert.equal(await db.tripOffer.count({ where: { trip: { viewerId: viewer.id } } }), 0);
+    assert.equal(await db.trip.count({ where: { viewerId: viewer.id, status: { in: [TripStatus.REQUESTED, TripStatus.OFFERED, TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] } } }), 1);
+    assert.equal(await db.tripOffer.count({ where: { trip: { viewerId: viewer.id } } }), 1);
+    const created = await db.trip.findFirstOrThrow({ where: { viewerId: viewer.id, status: TripStatus.OFFERED } });
+    await assertOfferConsistent(created.id);
     assert.ok(results.some(value => fulfilledResult(value)?.ok === false && fulfilledResult(value)?.status === 409));
   });
 

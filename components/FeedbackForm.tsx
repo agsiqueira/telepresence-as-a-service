@@ -37,6 +37,24 @@ export default function FeedbackForm({
     }
   }
 
+  async function skip() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/feedback/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripId }),
+      });
+      if (response.ok) onDone();
+      else setError("Unable to skip feedback. Please try again.");
+    } catch {
+      setError("Unable to skip feedback. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const scale = [1, 2, 3, 4, 5];
 
   return (
@@ -95,7 +113,7 @@ export default function FeedbackForm({
         >
           Submit
         </button>
-        <button onClick={onDone} className="text-gray-500 px-5 py-2">
+        <button onClick={skip} disabled={submitting} className="text-gray-500 px-5 py-2 disabled:opacity-50">
           Skip
         </button>
       </div>

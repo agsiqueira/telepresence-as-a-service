@@ -7,7 +7,7 @@ import FeedbackForm from "@/components/FeedbackForm";
 type Trip = {
   id: string;
   destination: string;
-  status: "REQUESTED" | "ACCEPTED" | "ENDED" | "CANCELLED";
+  status: "REQUESTED" | "OFFERED" | "ACCEPTED" | "IN_PROGRESS" | "ENDED" | "FEEDBACK_COMPLETED" | "CANCELLED" | "NO_OPERATOR_AVAILABLE";
   acceptedAt: string | null;
   hasOffer?: boolean;
 };
@@ -24,6 +24,10 @@ type Destination = {
 };
 
 type Phase = "browse" | "review" | "waiting" | "call" | "feedback";
+type HistoryTrip = Pick<Trip, "id" | "destination" | "status"> & {
+  requestedDuration: number | null;
+  requestedAt: string;
+};
 
 export default function ViewerPage() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
@@ -37,6 +41,7 @@ export default function ViewerPage() {
   const [requestError, setRequestError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [trip, setTrip] = useState<Trip | null>(null);
+  const [history, setHistory] = useState<HistoryTrip[]>([]);
   const [phase, setPhase] = useState<Phase>("browse");
   const [videoToken, setVideoToken] = useState<{
     token: string;
@@ -53,7 +58,21 @@ export default function ViewerPage() {
     void fetch("/api/destinations", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => setDestinations(data.destinations ?? []));
+    void fetch("/api/trips/current", { cache: "no-store" })
+      .then(response => response.json())
+      .then(data => {
+        if (!data.trip) return;
+        setTrip(data.trip);
+        setPhase(data.trip.status === "IN_PROGRESS" ? "waiting" : "waiting");
+      });
   }, []);
+
+  useEffect(() => {
+    if (phase !== "browse") return;
+    void fetch("/api/trips/history?limit=10", { cache: "no-store" })
+      .then(response => response.json())
+      .then(data => setHistory(data.history ?? []));
+  }, [phase]);
 
   function chooseDestination(destination: Destination) {
     setSelected(destination);
@@ -149,7 +168,7 @@ export default function ViewerPage() {
       if (!data.trip) return;
       setTrip(data.trip);
 
-      if (data.trip.status === "ACCEPTED") {
+      if (data.trip.status === "IN_PROGRESS") {
         const tokenRes = await fetch("/api/livekit-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -255,6 +274,10 @@ export default function ViewerPage() {
             <button type="button" onClick={() => setPhase("review")} className="mt-5 min-h-12 w-full rounded-lg bg-spartan-green px-5 font-semibold text-white">Review request</button>
           </div>
         )}
+        <section className="mt-10" aria-labelledby="viewer-history-heading">
+          <h2 id="viewer-history-heading" className="text-xl font-semibold">Recent visits</h2>
+          {history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No visits yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map(item => <li key={item.id} className="p-3"><p className="font-medium">{item.destination}</p><p className="text-sm text-gray-600">{item.status.replaceAll("_", " ").toLowerCase()} · {item.requestedDuration ?? "—"} min</p></li>)}</ul>}
+        </section>
       </div>
     );
   }
@@ -264,10 +287,25 @@ export default function ViewerPage() {
   }
 
   if (phase === "waiting") {
+    if (trip?.status === "NO_OPERATOR_AVAILABLE") {
+      return (
+        <div className="mx-auto max-w-md px-4 py-16 text-center">
+          <h1 className="text-xl font-semibold text-spartan-green">No operator is available</h1>
+          <p className="mb-8 mt-2 text-gray-500">You can try again with a new request.</p>
+          <button type="button" onClick={async () => {
+            const response = await fetch(`/api/trips/${trip.id}/retry`, { method: "POST" });
+            const data = await response.json();
+            if (response.ok) setTrip(data.trip);
+            else setRequestError(data.error ?? "Unable to retry");
+          }} className="min-h-11 rounded-md bg-spartan-green px-5 text-white">Try again</button>
+          {requestError && <p className="mt-3 text-sm text-red-600" role="alert">{requestError}</p>}
+        </div>
+      );
+    }
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
         <h1 className="text-xl font-semibold text-spartan-green mb-2">
-          {trip?.hasOffer ? "An operator is reviewing your request" : `Looking for an operator for ${trip?.destination}…`}
+          {trip?.status === "ACCEPTED" ? "Request accepted. Waiting for the visit to begin" : trip?.status === "OFFERED" || trip?.hasOffer ? "An operator is reviewing your request" : `Looking for an operator for ${trip?.destination}…`}
         </h1>
         <p className="text-gray-500 mb-8">This usually takes a moment.</p>
         <button

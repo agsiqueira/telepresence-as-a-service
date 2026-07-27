@@ -9,6 +9,7 @@ import {
   assignNextOperator,
   normalizedList,
 } from "./marketplace";
+import { cancelTrip, endTrip } from "./trip-lifecycle";
 
 type Database = PrismaClient;
 export type ServiceFailure = { ok: false; status: 400 | 403 | 404 | 409; error: string };
@@ -57,6 +58,7 @@ export type CreateTripInput = {
   preferredLanguage?: string;
   accessibilityNeeds: string[];
   customDestination?: string;
+  retryOfTripId?: string;
 };
 
 export async function createTripRequest(
@@ -68,7 +70,17 @@ export async function createTripRequest(
   try {
     return await runSerializable(db, async tx => {
       const existing = await tx.trip.findFirst({
-        where: { viewerId, status: { in: [TripStatus.REQUESTED, TripStatus.ACCEPTED] } },
+        where: {
+          viewerId,
+          status: {
+            in: [
+              TripStatus.REQUESTED,
+              TripStatus.OFFERED,
+              TripStatus.ACCEPTED,
+              TripStatus.IN_PROGRESS,
+            ],
+          },
+        },
       });
       if (existing) return conflict("An active visit request already exists");
 
@@ -99,14 +111,17 @@ export async function createTripRequest(
           customDestination: destination.custom ? input.customDestination! : null,
           immediate: true,
           livekitRoom: roomId(),
+          retryOfTripId: input.retryOfTripId,
         },
       });
-      const assigned = await assignNextOperator(tx, created.id);
-      if (destination.custom && !assigned) throw new Error("NO_CUSTOM_OPERATOR");
+      await assignNextOperator(tx, created.id);
       return { ok: true, value: { trip: await tx.trip.findUniqueOrThrow({ where: { id: created.id } }), created: true } };
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "NO_CUSTOM_OPERATOR") return conflict("No operator currently supports this custom request");
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && input.retryOfTripId) {
+      const existing = await db.trip.findUnique({ where: { retryOfTripId: input.retryOfTripId } });
+      if (existing) return { ok: true, value: { trip: existing, created: false } };
+    }
     if (serializableConflict(error)) return conflict("A request is already being processed");
     throw error;
   }
@@ -116,11 +131,11 @@ export async function acceptTripOffer(db: Database, operatorId: string, tripId: 
   try {
     return await runSerializable(db, async tx => {
       const current = await tx.trip.findUnique({ where: { id: tripId } });
-      if (current?.status === TripStatus.ACCEPTED && current.operatorId === operatorId) {
+      if ((current?.status === TripStatus.ACCEPTED || current?.status === TripStatus.IN_PROGRESS) && current.operatorId === operatorId) {
         return { ok: true, value: current } as const;
       }
       const offer = await tx.tripOffer.findUnique({ where: { tripId_operatorId: { tripId, operatorId } } });
-      if (!current || current.status !== TripStatus.REQUESTED || current.offeredOperatorId !== operatorId ||
+      if (!current || current.status !== TripStatus.OFFERED || current.offeredOperatorId !== operatorId ||
           !current.offerExpiresAt || current.offerExpiresAt <= now || offer?.status !== OfferStatus.OFFERED || offer.expiresAt <= now) {
         return conflict("Offer is no longer available");
       }
@@ -130,7 +145,7 @@ export async function acceptTripOffer(db: Database, operatorId: string, tripId: 
       });
       if (operator.count !== 1) return conflict("Offer is no longer available");
       const claimed = await tx.trip.updateMany({
-        where: { id: tripId, status: TripStatus.REQUESTED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now } },
+        where: { id: tripId, status: TripStatus.OFFERED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now } },
         data: { operatorId, offeredOperatorId: null, offerExpiresAt: null, status: TripStatus.ACCEPTED, acceptedAt: now },
       });
       if (claimed.count !== 1) throw new Error("ACCEPTANCE_RACE");
@@ -151,8 +166,8 @@ export async function declineTripOffer(db: Database, operatorId: string, tripId:
   try {
     return await runSerializable(db, async tx => {
       const claimed = await tx.trip.updateMany({
-        where: { id: tripId, status: TripStatus.REQUESTED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now } },
-        data: { offeredOperatorId: null, offerExpiresAt: null },
+        where: { id: tripId, status: TripStatus.OFFERED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now } },
+        data: { status: TripStatus.REQUESTED, offeredOperatorId: null, offerExpiresAt: null },
       });
       if (claimed.count !== 1) return conflict("Offer is no longer available");
       const history = await tx.tripOffer.updateMany({
@@ -206,51 +221,16 @@ export async function updateOperatorSettings(db: Database, operatorId: string, i
 }
 
 export async function cancelRequestedTrip(db: Database, viewerId: string, tripId: string, now = new Date()) {
-  try {
-    return await runSerializable(db, async tx => {
-      const trip = await tx.trip.findFirst({ where: { id: tripId, viewerId } });
-      if (!trip) return { ok: false, status: 404, error: "Not found" } as const;
-      if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip } as const;
-      if (trip.status !== TripStatus.REQUESTED) return conflict("Trip cannot be cancelled");
-      const changed = await tx.trip.updateMany({
-        where: { id: tripId, viewerId, status: TripStatus.REQUESTED, offeredOperatorId: trip.offeredOperatorId },
-        data: { status: TripStatus.CANCELLED, offeredOperatorId: null, offerExpiresAt: null },
-      });
-      if (changed.count !== 1) return conflict("Trip cannot be cancelled");
-      if (trip.offeredOperatorId) {
-        await tx.tripOffer.updateMany({ where: { tripId, operatorId: trip.offeredOperatorId, status: OfferStatus.OFFERED }, data: { status: OfferStatus.EXPIRED, respondedAt: now } });
-        await tx.user.updateMany({ where: { id: trip.offeredOperatorId, pendingOfferTripId: tripId }, data: { pendingOfferTripId: null } });
-      }
-      return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) } as const;
-    });
-  } catch (error) {
-    if (serializableConflict(error)) return conflict("Trip changed while cancellation was processed");
-    throw error;
-  }
+  return cancelTrip(db, viewerId, Role.VIEWER, tripId, now);
 }
 
 export async function endAcceptedTrip(db: Database, actorId: string, actorRole: Role, tripId: string, now = new Date()) {
-  try {
-    return await runSerializable(db, async tx => {
-      const trip = await tx.trip.findUnique({ where: { id: tripId } });
-      const authorized = trip && ((actorRole === Role.VIEWER && trip.viewerId === actorId) || (actorRole === Role.OPERATOR && trip.operatorId === actorId));
-      if (!authorized) return { ok: false, status: 404, error: "Not found" } as const;
-      if (trip.status === TripStatus.ENDED) return { ok: true, value: trip } as const;
-      if (trip.status !== TripStatus.ACCEPTED) return conflict("Trip is not active");
-      const changed = await tx.trip.updateMany({ where: { id: tripId, status: TripStatus.ACCEPTED, operatorId: trip.operatorId }, data: { status: TripStatus.ENDED, endedAt: now } });
-      if (changed.count !== 1) return conflict("Trip is not active");
-      if (trip.operatorId) await tx.user.updateMany({ where: { id: trip.operatorId, activeTripId: tripId }, data: { activeTripId: null } });
-      return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) } as const;
-    });
-  } catch (error) {
-    if (serializableConflict(error)) return conflict("Trip changed while ending was processed");
-    throw error;
-  }
+  return endTrip(db, actorId, actorRole, tripId, now);
 }
 
 export async function getCurrentOffer(db: Database | Prisma.TransactionClient, operatorId: string, now = new Date()) {
   return db.trip.findFirst({
-    where: { status: TripStatus.REQUESTED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now }, offers: { some: { operatorId, status: OfferStatus.OFFERED } } },
+    where: { status: TripStatus.OFFERED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now }, offers: { some: { operatorId, status: OfferStatus.OFFERED } } },
     orderBy: { requestedAt: "asc" },
     select: { id: true, destination: true, meetingArea: true, requestedDuration: true, viewerNote: true, preferredLanguage: true, accessibilityNeeds: true, customDestination: true, immediate: true, offerExpiresAt: true },
   });

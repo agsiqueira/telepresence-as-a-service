@@ -4,7 +4,12 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/lib/current-user";
 import { createTripRequest, validateCreateTripInput } from "@/lib/phase3-services";
 
-const ACTIVE_STATUSES: TripStatus[] = [TripStatus.REQUESTED, TripStatus.ACCEPTED];
+const ACTIVE_STATUSES: TripStatus[] = [
+  TripStatus.REQUESTED,
+  TripStatus.OFFERED,
+  TripStatus.ACCEPTED,
+  TripStatus.IN_PROGRESS,
+];
 
 export async function GET(req: NextRequest) {
   const user = await requireRole(Role.OPERATOR);

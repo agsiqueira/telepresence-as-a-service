@@ -6,7 +6,7 @@ import VideoRoom from "@/components/VideoRoom";
 type Trip = {
   id: string;
   destination: string;
-  status: "REQUESTED" | "ACCEPTED" | "ENDED" | "CANCELLED";
+  status: "REQUESTED" | "OFFERED" | "ACCEPTED" | "IN_PROGRESS" | "ENDED" | "FEEDBACK_COMPLETED" | "CANCELLED" | "NO_OPERATOR_AVAILABLE";
   acceptedAt: string | null;
 };
 
@@ -24,6 +24,10 @@ type Offer = {
 };
 
 type DestinationOption = { id: string; name: string; city: string };
+type OperatorHistory = {
+  status: string;
+  trip: { id: string; destination: string; status: string; requestedDuration: number | null };
+};
 
 const LANGUAGE_OPTIONS = ["English", "Spanish", "French", "Portuguese"];
 const ACCESSIBILITY_OPTIONS = [
@@ -52,6 +56,7 @@ export default function OperatorPage() {
   const [offerSeconds, setOfferSeconds] = useState(0);
   const [offerAction, setOfferAction] = useState(false);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
+  const [history, setHistory] = useState<OperatorHistory[]>([]);
   const [videoToken, setVideoToken] = useState<{ token: string; url: string } | null>(null);
   const [tripEnded, setTripEnded] = useState(false);
   const endingRef = useRef(false);
@@ -76,7 +81,34 @@ export default function OperatorPage() {
           setDurations(data.profile.durationOptions);
         }
       });
+    void fetch("/api/trips/current", { cache: "no-store" })
+      .then(response => response.json())
+      .then(async data => {
+        if (!data.trip) return;
+        let current = data.trip as Trip;
+        if (current.status === "ACCEPTED") {
+          const started = await fetch(`/api/trips/${current.id}/start`, { method: "POST" });
+          if (started.ok) current = (await started.json()).trip;
+        }
+        if (current.status !== "IN_PROGRESS") return;
+        const tokenResponse = await fetch("/api/livekit-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tripId: current.id }),
+        });
+        if (!tokenResponse.ok) return;
+        const tokenData = await tokenResponse.json();
+        setActiveTrip(current);
+        setVideoToken({ token: tokenData.token, url: tokenData.url });
+      });
   }, []);
+
+  useEffect(() => {
+    if (activeTrip) return;
+    void fetch("/api/trips/history?limit=10", { cache: "no-store" })
+      .then(response => response.json())
+      .then(data => setHistory(data.history ?? []));
+  }, [activeTrip]);
 
   async function saveSettings() {
     setMessage("");
@@ -151,6 +183,14 @@ export default function OperatorPage() {
     endRequestRef.current = false;
     teardownRef.current = false;
     setTripEnded(false);
+    const startResponse = await fetch(`/api/trips/${data.trip.id}/start`, { method: "POST" });
+    if (!startResponse.ok) {
+      setActiveTrip(null);
+      setOfferAction(false);
+      return setMessage("Unable to start this visit");
+    }
+    const started = await startResponse.json();
+    setActiveTrip(started.trip);
     const tokenResponse = await fetch("/api/livekit-token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -195,7 +235,7 @@ export default function OperatorPage() {
       try {
         const response = await fetch(`/api/trips/${activeTripId}`, { cache: "no-store", signal: request.signal });
         const data = await response.json();
-        if (!stopped && response.ok && data.trip?.status !== "ACCEPTED" && !endingRef.current) {
+        if (!stopped && response.ok && data.trip?.status !== "IN_PROGRESS" && !endingRef.current) {
           endingRef.current = true;
           setTripEnded(true);
           return;
@@ -235,6 +275,7 @@ export default function OperatorPage() {
 
       {!editing && online && !offer && <div className="mt-8 rounded-2xl bg-gray-950 p-6 text-white"><p className="font-semibold">Online and ready</p><p className="mt-1 text-sm text-gray-300">Waiting for a compatible visit request…</p></div>}
       {!editing && offer && <section className="mt-8 overflow-hidden rounded-2xl border-2 border-gray-950 bg-white shadow-xl"><div className="bg-gray-950 p-5 text-white"><div className="flex justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">Immediate visit offer</p><h2 className="mt-1 text-2xl font-bold">{offer.customDestination || offer.destination}</h2></div><p className="shrink-0 text-lg font-bold" aria-label={`Offer expires in ${offerSeconds} seconds`}>{offerSeconds}s</p></div></div><dl className="grid gap-3 p-5 text-sm"><div><dt className="text-gray-500">Meeting instructions</dt><dd className="font-medium">{offer.meetingArea}</dd></div><div><dt className="text-gray-500">Duration</dt><dd>{offer.requestedDuration} minutes</dd></div><div><dt className="text-gray-500">Language</dt><dd>{offer.preferredLanguage || "No preference"}</dd></div>{offer.accessibilityNeeds.length > 0 && <div><dt className="text-gray-500">Accessibility</dt><dd>{offer.accessibilityNeeds.join(", ")}</dd></div>}{offer.viewerNote && <div><dt className="text-gray-500">Viewer note</dt><dd>{offer.viewerNote}</dd></div>}</dl><div className="grid grid-cols-2 gap-3 p-5 pt-0"><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={declineOffer} className="min-h-12 rounded-lg border font-semibold disabled:opacity-50">Decline</button><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={acceptOffer} className="min-h-12 rounded-lg bg-spartan-green font-semibold text-white disabled:opacity-50">Accept</button></div></section>}
+      {!editing && !offer && <section className="mt-8" aria-labelledby="operator-history-heading"><h2 id="operator-history-heading" className="text-xl font-semibold">Recent offers and visits</h2>{history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No offer history yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map((item, index) => <li key={`${item.trip.id}-${index}`} className="p-3"><p className="font-medium">{item.trip.destination}</p><p className="text-sm text-gray-600">Offer {item.status.toLowerCase()} · Trip {item.trip.status.replaceAll("_", " ").toLowerCase()}</p></li>)}</ul>}</section>}
     </div>
   );
 }

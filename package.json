@@ -13,6 +13,8 @@
     "seed": "node prisma/seed.js",
     "test:phase3": "node scripts/validate-phase3.mjs",
     "test:phase3:db": "node scripts/run-phase3-db-tests.mjs",
+    "test:phase4": "node scripts/validate-phase4.mjs",
+    "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

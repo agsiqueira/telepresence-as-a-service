@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (trip.status !== TripStatus.ACCEPTED) {
+  if (trip.status !== TripStatus.ACCEPTED && trip.status !== TripStatus.IN_PROGRESS) {
     return NextResponse.json({ error: "Trip is not active" }, { status: 409 });
   }
 
