@@ -8,6 +8,7 @@ type Trip = {
   id: string;
   destination: string;
   status: "REQUESTED" | "ACCEPTED" | "ENDED" | "CANCELLED";
+  acceptedAt: string | null;
 };
 
 type Phase = "form" | "waiting" | "call" | "feedback";
@@ -213,11 +214,13 @@ export default function ViewerPage() {
     );
   }
 
-  if (phase === "call" && videoToken) {
+  if (phase === "call" && videoToken && trip?.acceptedAt) {
     return (
       <VideoRoom
         token={videoToken.token}
         serverUrl={videoToken.url}
+        destination={trip.destination}
+        acceptedAt={trip.acceptedAt}
         canPublishCamera={false}
         canPublishMicrophone
         viewerLayout

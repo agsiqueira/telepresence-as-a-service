@@ -7,6 +7,7 @@ type Trip = {
   id: string;
   destination: string;
   status: "REQUESTED" | "ACCEPTED" | "ENDED" | "CANCELLED";
+  acceptedAt: string | null;
 };
 
 export default function OperatorPage() {
@@ -139,16 +140,18 @@ export default function OperatorPage() {
     };
   }, [activeTripId]);
 
-  if (activeTrip && videoToken) {
+  if (activeTrip && videoToken && activeTrip.acceptedAt) {
     return (
       <VideoRoom
         token={videoToken.token}
         serverUrl={videoToken.url}
+        destination={activeTrip.destination}
+        acceptedAt={activeTrip.acceptedAt}
         canPublishCamera
         canPublishMicrophone
         disconnect={tripEnded}
         onAuthoritativeDisconnect={clearActiveCall}
-        onDisconnected={endTrip}
+        onEnd={endTrip}
       />
     );
   }
