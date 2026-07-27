@@ -59,16 +59,27 @@ export default function OperatorPage() {
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [history, setHistory] = useState<OperatorHistory[]>([]);
   const [videoToken, setVideoToken] = useState<{ token: string; url: string } | null>(null);
+  const [mediaState, setMediaState] = useState<"idle" | "preparing" | "ready" | "failed">("idle");
+  const [mediaRetry, setMediaRetry] = useState(0);
   const [tripEnded, setTripEnded] = useState(false);
   const [pollingMessage, setPollingMessage] = useState("");
   const [pollRetry, setPollRetry] = useState(0);
   const endingRef = useRef(false);
   const endRequestRef = useRef(false);
   const teardownRef = useRef(false);
+  const activeTripId = activeTrip?.id;
+  const activeTripStatus = activeTrip?.status;
 
   useEffect(() => {
-    void fetch("/api/operator/settings", { cache: "no-store" })
-      .then((response) => response.json())
+    const currentRequest = new AbortController();
+    void fetch("/api/operator/settings", { cache: "no-store", signal: currentRequest.signal })
+      .then(response => requireJsonResponse<{
+        destinations?: DestinationOption[];
+        destinationIds?: string[];
+        online?: boolean;
+        complete?: boolean;
+        profile?: { operatingArea: string; serviceRadiusKm: number; supportsCustom: boolean; languages: string[]; accessibilityCapabilities: string[]; durationOptions: number[] };
+      }>(response))
       .then((data) => {
         setDestinations(data.destinations ?? []);
         setDestinationIds(data.destinationIds ?? []);
@@ -83,34 +94,65 @@ export default function OperatorPage() {
           setAccessibility(data.profile.accessibilityCapabilities);
           setDurations(data.profile.durationOptions);
         }
+      })
+      .catch(error => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setMessage("Unable to load service settings. Please retry.");
       });
-    void fetch("/api/trips/current", { cache: "no-store" })
-      .then(response => response.json())
-      .then(async data => {
-        if (!data.trip) return;
-        let current = data.trip as Trip;
-        if (current.status === "ACCEPTED") {
-          const started = await fetch(`/api/trips/${current.id}/start`, { method: "POST" });
-          if (started.ok) current = (await started.json()).trip;
+    void fetch("/api/trips/current", { cache: "no-store", signal: currentRequest.signal })
+      .then(response => requireJsonResponse<{ trip: Trip | null }>(response))
+      .then(data => {
+        if (data.trip) {
+          teardownRef.current = false;
+          setOffer(null);
+          setActiveTrip(data.trip);
         }
-        if (current.status !== "IN_PROGRESS") return;
+      })
+      .catch(error => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setPollingMessage("Unable to restore the active visit. Please retry.");
+        }
+      });
+    return () => currentRequest.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!activeTripId || (activeTripStatus !== "ACCEPTED" && activeTripStatus !== "IN_PROGRESS")) return;
+    const request = new AbortController();
+    let currentId = activeTripId;
+    setMediaState("preparing");
+    setVideoToken(null);
+
+    void (async () => {
+      try {
+        if (activeTripStatus === "ACCEPTED") {
+          const response = await fetch(`/api/trips/${currentId}/start`, { method: "POST", signal: request.signal });
+          const data = await requireJsonResponse<{ trip: Trip }>(response);
+          currentId = data.trip.id;
+          setActiveTrip(data.trip);
+        }
         const tokenResponse = await fetch("/api/livekit-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tripId: current.id }),
+          body: JSON.stringify({ tripId: currentId }),
+          signal: request.signal,
         });
-        if (!tokenResponse.ok) return;
-        const tokenData = await tokenResponse.json();
-        setActiveTrip(current);
-        setVideoToken({ token: tokenData.token, url: tokenData.url });
-      });
-  }, []);
+        const tokenData = await requireJsonResponse<{ token: string; url: string }>(tokenResponse);
+        setVideoToken(tokenData);
+        setMediaState("ready");
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setMediaState("failed");
+      }
+    })();
+
+    return () => request.abort();
+  }, [activeTripId, activeTripStatus, mediaRetry]);
 
   useEffect(() => {
     if (activeTrip) return;
     void fetch("/api/trips/history?limit=10", { cache: "no-store" })
-      .then(response => response.json())
-      .then(data => setHistory(data.history ?? []));
+      .then(response => requireJsonResponse<{ history: OperatorHistory[] }>(response))
+      .then(data => setHistory(data.history ?? []))
+      .catch(() => setMessage("Unable to load recent visit history. Please retry."));
   }, [activeTrip]);
 
   async function saveSettings() {
@@ -176,35 +218,22 @@ export default function OperatorPage() {
   async function acceptOffer() {
     if (!offer || offerAction) return;
     setOfferAction(true);
-    const response = await fetch(`/api/trips/${offer.id}/accept`, { method: "POST" });
-    const data = await response.json();
-    if (!response.ok) {
+    try {
+      const response = await fetch(`/api/trips/${offer.id}/accept`, { method: "POST" });
+      const data = await requireJsonResponse<{ trip: Trip }>(response);
+      setActiveTrip(data.trip);
       setOffer(null);
+      endingRef.current = false;
+      endRequestRef.current = false;
+      teardownRef.current = false;
+      setTripEnded(false);
+      setMediaState("preparing");
+    } catch (error) {
+      setOffer(null);
+      setMessage(error instanceof Error ? error.message : "This offer is no longer available");
+    } finally {
       setOfferAction(false);
-      return setMessage(data.error ?? "This offer is no longer available");
     }
-    setActiveTrip(data.trip);
-    setOffer(null);
-    endingRef.current = false;
-    endRequestRef.current = false;
-    teardownRef.current = false;
-    setTripEnded(false);
-    const startResponse = await fetch(`/api/trips/${data.trip.id}/start`, { method: "POST" });
-    if (!startResponse.ok) {
-      setActiveTrip(null);
-      setOfferAction(false);
-      return setMessage("Unable to start this visit");
-    }
-    const started = await startResponse.json();
-    setActiveTrip(started.trip);
-    const tokenResponse = await fetch("/api/livekit-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tripId: data.trip.id }),
-    });
-    const tokenData = await tokenResponse.json();
-    setVideoToken({ token: tokenData.token, url: tokenData.url });
-    setOfferAction(false);
   }
 
   async function declineOffer() {
@@ -219,8 +248,14 @@ export default function OperatorPage() {
   async function endTrip() {
     if (!activeTrip || endRequestRef.current) return;
     endRequestRef.current = true;
-    await fetch(`/api/trips/${activeTrip.id}/end`, { method: "POST" });
-    clearActiveCall();
+    try {
+      const response = await fetch(`/api/trips/${activeTrip.id}/end`, { method: "POST" });
+      await requireJsonResponse(response);
+      clearActiveCall();
+    } catch {
+      endRequestRef.current = false;
+      setPollingMessage("Unable to end the visit. Check your connection and try again.");
+    }
   }
   function clearActiveCall() {
     if (teardownRef.current) return;
@@ -228,10 +263,10 @@ export default function OperatorPage() {
     setTripEnded(false);
     setActiveTrip(null);
     setVideoToken(null);
+    setMediaState("idle");
     setPollingMessage("");
   }
 
-  const activeTripId = activeTrip?.id;
   useEffect(() => {
     if (!activeTripId) return;
     setPollingMessage("");
@@ -241,7 +276,8 @@ export default function OperatorPage() {
       poll: async signal => {
         const response = await fetch(`/api/trips/${activeTripId}`, { cache: "no-store", signal });
         const data = await requireJsonResponse<{ trip: Trip }>(response);
-        if (data.trip.status !== "IN_PROGRESS" && !endingRef.current) {
+        setActiveTrip(data.trip);
+        if (!["ACCEPTED", "IN_PROGRESS"].includes(data.trip.status) && !endingRef.current) {
           endingRef.current = true;
           setTripEnded(true);
           return "stop";
@@ -253,8 +289,12 @@ export default function OperatorPage() {
     });
   }, [activeTripId, pollRetry]);
 
-  if (activeTrip && videoToken && activeTrip.acceptedAt) {
+  if (activeTrip && videoToken && activeTrip.acceptedAt && mediaState === "ready") {
     return <><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /><VideoRoom token={videoToken.token} serverUrl={videoToken.url} destination={activeTrip.destination} acceptedAt={activeTrip.acceptedAt} canPublishCamera canPublishMicrophone disconnect={tripEnded} onAuthoritativeDisconnect={clearActiveCall} onEnd={endTrip} /></>;
+  }
+
+  if (activeTrip) {
+    return <ActiveVisitPreparation trip={activeTrip} failed={mediaState === "failed"} onRetry={() => setMediaRetry(value => value + 1)} onEnd={endTrip} />;
   }
 
   const toggleString = (value: string, values: string[], setValues: (values: string[]) => void) => setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
@@ -288,4 +328,8 @@ export default function OperatorPage() {
 function PollingNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
   if (!message) return null;
   return <div className="m-4 flex items-center justify-between gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status"><span>{message}</span><button type="button" onClick={onRetry} className="min-h-11 shrink-0 rounded-md border border-amber-700 px-3 font-semibold">Retry</button></div>;
+}
+
+function ActiveVisitPreparation({ trip, failed, onRetry, onEnd }: { trip: Trip; failed: boolean; onRetry: () => void; onEnd: () => void }) {
+  return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-6 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active visit</p><h1 className="mt-2 text-2xl font-bold">{trip.destination}</h1><p className="mt-4 text-gray-300" role="status">{failed ? "Unable to connect to live media. Your visit is still active." : "Preparing camera and microphone…"}</p>{failed && <button type="button" onClick={onRetry} className="mt-5 min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950">Try media again</button>}<button type="button" onClick={onEnd} className="mt-5 min-h-11 w-full rounded-full border border-red-400 px-5 font-semibold text-red-200">End visit</button></section></main>;
 }

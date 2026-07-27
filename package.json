@@ -17,6 +17,7 @@
     "test:terminology": "node scripts/validate-telepresence-terminology.mjs",
     "test:viewer-runtime": "node scripts/validate-viewer-runtime.mjs",
     "test:polling": "node scripts/validate-polling.mjs",
+    "test:active-visit": "node scripts/validate-active-visit-recovery.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"
   },

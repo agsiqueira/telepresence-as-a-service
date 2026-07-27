@@ -159,6 +159,15 @@ function connectionLabel(state: ConnectionState) {
   }
 }
 
+function mediaFailureMessage(error?: Error) {
+  const detail = `${error?.name ?? ""} ${error?.message ?? ""}`.toLowerCase();
+  if (detail.includes("notallowed") || detail.includes("permission") || detail.includes("denied")) return "Camera or microphone permission was denied. Allow access and try again.";
+  if (detail.includes("notfound") || detail.includes("device")) return "A required camera or microphone was not found.";
+  if (detail.includes("websocket") || detail.includes("signal")) return "The live-visit service could not be reached. Check your connection and try again.";
+  if (detail.includes("ice") || detail.includes("transport")) return "The media connection could not be established on this network.";
+  return "Unable to connect. Check your connection and try again.";
+}
+
 function ParticipantIdentity({
   name,
   designation,
@@ -310,7 +319,7 @@ function ActiveVisitConference({
   destination: string;
   acceptedAt: string;
   onEnd: () => void;
-  connectionError: boolean;
+  connectionError: string | null;
   onRetry: () => void;
   visitEnded: boolean;
 }) {
@@ -393,7 +402,7 @@ function ActiveVisitConference({
             {cameraTracks.length === 0 && (
               <div className="absolute inset-0 grid place-items-center p-8 text-center text-gray-300">
                 {connectionError
-                  ? "Unable to connect. Check your connection and try again."
+                  ? connectionError
                   : role === "viewer"
                     ? "Waiting for operator video…"
                     : "Starting your camera…"}
@@ -531,7 +540,7 @@ export default function VideoRoom({
 }) {
   const authoritativeDisconnectRef = useRef(false);
   const [retryKey, setRetryKey] = useState(0);
-  const [connectionError, setConnectionError] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const endAction = viewerLayout ? onLeave : onEnd;
 
   return (
@@ -543,13 +552,13 @@ export default function VideoRoom({
       video={canPublishCamera}
       audio={canPublishMicrophone}
       data-lk-theme="default"
-      onConnected={() => setConnectionError(false)}
-      onError={() => setConnectionError(true)}
+      onConnected={() => setConnectionError(null)}
+      onError={(error) => setConnectionError(mediaFailureMessage(error))}
       onDisconnected={() => {
         if (authoritativeDisconnectRef.current || disconnect) {
           onAuthoritativeDisconnect?.();
         } else {
-          setConnectionError(true);
+          setConnectionError("The live connection was interrupted. Your visit is still active.");
           onDisconnected?.();
         }
       }}
@@ -568,7 +577,7 @@ export default function VideoRoom({
         connectionError={connectionError}
         visitEnded={disconnect}
         onRetry={() => {
-          setConnectionError(false);
+          setConnectionError(null);
           setRetryKey((key) => key + 1);
         }}
         onEnd={() => endAction?.()}

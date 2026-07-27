@@ -317,6 +317,9 @@ export default function ViewerPage() {
         </div>
       );
     }
+    if (trip?.status === "IN_PROGRESS") {
+      return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-6 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active visit</p><h1 className="mt-2 text-2xl font-bold">{trip.destination}</h1><p className="mt-4 text-gray-300" role="status">Reconnecting to the live visit…</p>{pollingMessage && <><p className="mt-3 text-amber-200">{pollingMessage}</p><button type="button" onClick={() => setPollRetry(value => value + 1)} className="mt-5 min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950">Try media again</button></>}<button type="button" onClick={leaveCall} className="mt-5 min-h-11 w-full rounded-full border border-red-400 px-5 font-semibold text-red-200">Leave visit</button></section></main>;
+    }
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
         <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />
