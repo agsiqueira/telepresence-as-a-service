@@ -25,7 +25,7 @@ type Offer = {
   offerExpiresAt: string;
 };
 
-type DestinationOption = { id: string; name: string; city: string };
+type DestinationOption = { id: string; name: string; city: string; active: boolean };
 type OperatorHistory = {
   status: string;
   trip: { id: string; destination: string; status: string; requestedDuration: number | null };
@@ -314,7 +314,7 @@ export default function OperatorPage() {
         <section className="mt-6 rounded-2xl border p-5"><h2 className="text-xl font-bold">Service setup</h2><p className="mt-1 text-sm text-gray-600">Complete the required settings before going online.</p>
           <label className="mt-4 block text-sm font-medium">Operating area<select value={operatingArea} onChange={(event) => setOperatingArea(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border px-3">{[...new Set(destinations.map((destination) => destination.city))].map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
           <label className="mt-4 block text-sm font-medium">Planning radius (km)<input type="number" min={1} max={100} value={serviceRadiusKm} onChange={(event) => setServiceRadiusKm(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></label><p className="mt-1 text-xs text-gray-500">Stored for future distance-aware matching. Pilot matching currently uses the selected operating area.</p>
-          <fieldset className="mt-4"><legend className="text-sm font-medium">Destinations offered</legend>{destinations.map((destination) => <label key={destination.id} className="mt-2 flex gap-2 text-sm"><input type="checkbox" checked={destinationIds.includes(destination.id)} onChange={() => toggleString(destination.id, destinationIds, setDestinationIds)} />{destination.name}</label>)}</fieldset>
+          <fieldset className="mt-4"><legend className="text-sm font-medium">Destinations offered</legend>{destinations.map((destination) => <label key={destination.id} className="mt-2 flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" disabled={!destination.active} checked={destinationIds.includes(destination.id)} onChange={() => toggleString(destination.id, destinationIds, setDestinationIds)} />{destination.name}{!destination.active && " (inactive—retained for history)"}</label>)}</fieldset>
           <label className="mt-4 flex gap-2 text-sm"><input type="checkbox" checked={supportsCustom} onChange={(event) => setSupportsCustom(event.target.checked)} />Accept custom destination requests for safe, publicly accessible places</label>
           <fieldset className="mt-4"><legend className="text-sm font-medium">Languages</legend>{LANGUAGE_OPTIONS.map((item) => <label key={item} className="mr-4 mt-2 inline-flex gap-2 text-sm"><input type="checkbox" checked={languages.includes(item)} onChange={() => toggleString(item, languages, setLanguages)} />{item}</label>)}</fieldset>
           <fieldset className="mt-4"><legend className="text-sm font-medium">Supported durations</legend>{DURATION_OPTIONS.map((item) => <label key={item} className="mr-4 mt-2 inline-flex gap-2 text-sm"><input type="checkbox" checked={durations.includes(item)} onChange={() => setDurations(durations.includes(item) ? durations.filter((value) => value !== item) : [...durations, item])} />{item} min</label>)}</fieldset>

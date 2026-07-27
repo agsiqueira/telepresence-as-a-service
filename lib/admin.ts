@@ -1,0 +1,43 @@
+import "server-only";
+
+import { OperatorPilotStatus, Prisma, Role, type PrismaClient } from "@prisma/client";
+import { ALLOWED_DURATIONS, profileIsComplete } from "@/lib/marketplace";
+import { publicDisplayName } from "@/lib/profiles";
+
+export const ADMIN_PAGE_LIMIT = 20;
+export const ADMIN_MAX_LIMIT = 50;
+
+export function parseParticipantQuery(params: URLSearchParams) {
+  const limit = Number(params.get("limit") ?? ADMIN_PAGE_LIMIT);
+  const role = params.get("role") ?? "";
+  const status = params.get("status") ?? "";
+  const search = (params.get("search") ?? "").trim().replace(/\s+/g, " ");
+  const page = Number(params.get("page") ?? 1);
+  if (!Number.isInteger(limit) || limit < 1 || limit > ADMIN_MAX_LIMIT || !Number.isInteger(page) || page < 1 || page > 1000 || !["", "VIEWER", "OPERATOR"].includes(role) || !["", ...Object.values(OperatorPilotStatus)].includes(status) || search.length > 80) return null;
+  return { limit, page, role: role as "" | "VIEWER" | "OPERATOR", status: status as "" | OperatorPilotStatus, search };
+}
+
+export async function listAdminParticipants(db: PrismaClient, input: NonNullable<ReturnType<typeof parseParticipantQuery>>) {
+  const where: Prisma.UserWhereInput = {
+    role: input.role || { in: [Role.VIEWER, Role.OPERATOR] },
+    name: input.search ? { contains: input.search, mode: "insensitive" } : undefined,
+    operatorProfile: input.status ? { is: { pilotStatus: input.status } } : undefined,
+  };
+  const users = await db.user.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (input.page - 1) * input.limit, take: input.limit, select: { id: true, name: true, role: true, online: true, pendingOfferTripId: true, activeTripId: true, createdAt: true, operatorProfile: { select: { pilotStatus: true, operatingArea: true, serviceRadiusKm: true, supportsCustom: true, languages: true, accessibilityCapabilities: true, durationOptions: true } }, destinationServices: { where: { destination: { active: true } }, select: { destinationId: true } } } });
+  return users.map(user => ({ reference: user.id, displayName: publicDisplayName(user.name) || "Unnamed participant", role: user.role, joinedDate: user.createdAt.toISOString().slice(0, 10), ...(user.role === Role.OPERATOR ? { pilotStatus: user.operatorProfile?.pilotStatus ?? OperatorPilotStatus.PENDING, online: user.online, activeState: user.activeTripId ? "ACTIVE_VISIT" : user.pendingOfferTripId ? "ACTIVE_OFFER" : "AVAILABLE", profileComplete: profileIsComplete(user.operatorProfile, user.destinationServices.length, user.operatorProfile?.supportsCustom ?? false) } : {}) }));
+}
+
+const DESTINATION_FIELDS = new Set(["name", "shortDescription", "city", "meetingArea", "category", "durationOptions", "imageUrl", "custom", "active", "expectedUpdatedAt"]);
+export function validateAdminDestination(body: Record<string, unknown>, creating: boolean) {
+  if (Object.keys(body).some(key => !DESTINATION_FIELDS.has(key)) || (creating && "expectedUpdatedAt" in body)) return { ok: false as const, status: 400, error: "Unsupported destination field" };
+  const text = (key: string, max: number) => typeof body[key] === "string" ? body[key].trim().replace(/\s+/g, " ").slice(0, max + 1) : "";
+  const name = text("name", 100), shortDescription = text("shortDescription", 240), city = text("city", 80), meetingArea = text("meetingArea", 160), category = text("category", 60);
+  const durationOptions = Array.isArray(body.durationOptions) ? [...new Set(body.durationOptions.map(Number))] : [];
+  const imageUrl = body.imageUrl === null || body.imageUrl === "" ? null : typeof body.imageUrl === "string" ? body.imageUrl.trim() : undefined;
+  if (!name || name.length > 100 || !shortDescription || shortDescription.length > 240 || !city || city.length > 80 || !meetingArea || meetingArea.length > 160 || !category || category.length > 60 || !durationOptions.length || durationOptions.some(value => !ALLOWED_DURATIONS.includes(value as never)) || imageUrl === undefined || (imageUrl && (!imageUrl.startsWith("https://") || imageUrl.length > 500)) || typeof body.custom !== "boolean" || typeof body.active !== "boolean") return { ok: false as const, status: 400, error: "Check the destination details" };
+  const expectedUpdatedAt = typeof body.expectedUpdatedAt === "string" && !Number.isNaN(Date.parse(body.expectedUpdatedAt)) ? new Date(body.expectedUpdatedAt) : null;
+  if (!creating && !expectedUpdatedAt) return { ok: false as const, status: 400, error: "Destination version is required" };
+  return { ok: true as const, value: { name, shortDescription, city, meetingArea, category, durationOptions, imageUrl, custom: body.custom, active: body.active, expectedUpdatedAt } };
+}
+
+export function destinationSlug(name: string) { return name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80); }

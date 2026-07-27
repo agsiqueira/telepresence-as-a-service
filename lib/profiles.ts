@@ -1,6 +1,6 @@
 import "server-only";
 
-import { OperatorPilotStatus, Role, TripStatus, type PrismaClient } from "@prisma/client";
+import { OperatorPilotStatus, Prisma, Role, TripStatus, type PrismaClient } from "@prisma/client";
 import { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES, normalizedList, profileIsComplete } from "@/lib/marketplace";
 
 type Result<T> = { ok: true; value: T } | { ok: false; status: number; error: string };
@@ -58,12 +58,41 @@ export async function evaluateOperatorReadiness(db: PrismaClient, userId: string
   return { eligible: true, code: "READY", message: "Ready to go online" };
 }
 
-export async function setOperatorPilotStatus(db: PrismaClient, userId: string, pilotStatus: OperatorPilotStatus) {
-  return db.$transaction(async tx => {
-    const operator = await tx.user.findFirst({ where: { id: userId, role: Role.OPERATOR }, select: { id: true, operatorProfile: { select: { userId: true } } } });
+export async function setOperatorPilotStatus(db: PrismaClient, userId: string, pilotStatus: OperatorPilotStatus, expectedStatus?: OperatorPilotStatus) {
+ try {
+  return await db.$transaction(async tx => {
+    const operator = await tx.user.findFirst({ where: { id: userId, role: Role.OPERATOR }, select: { id: true, pendingOfferTripId: true, operatorProfile: { select: { userId: true, pilotStatus: true } } } });
     if (!operator?.operatorProfile) return { ok: false as const, status: 404 as const, error: "Operator not found" };
-    await tx.operatorProfile.update({ where: { userId }, data: { pilotStatus } });
+    if (operator.pendingOfferTripId) return { ok: false as const, status: 409 as const, error: "Operator has an active offer; try again later" };
+    if (expectedStatus && operator.operatorProfile.pilotStatus !== expectedStatus) return { ok: false as const, status: 409 as const, error: "Pilot status changed; refresh and try again" };
+    const allowed: Record<OperatorPilotStatus, OperatorPilotStatus[]> = {
+      PENDING: [OperatorPilotStatus.APPROVED, OperatorPilotStatus.SUSPENDED],
+      APPROVED: [OperatorPilotStatus.SUSPENDED],
+      SUSPENDED: [OperatorPilotStatus.APPROVED, OperatorPilotStatus.PENDING],
+    };
+    if (operator.operatorProfile.pilotStatus !== pilotStatus && !allowed[operator.operatorProfile.pilotStatus].includes(pilotStatus)) return { ok: false as const, status: 409 as const, error: "Pilot status transition is not allowed" };
+    const changed = await tx.operatorProfile.updateMany({ where: { userId, pilotStatus: operator.operatorProfile.pilotStatus }, data: { pilotStatus } });
+    if (changed.count !== 1) return { ok: false as const, status: 409 as const, error: "Pilot status changed; refresh and try again" };
     await tx.user.update({ where: { id: userId }, data: { online: false } });
-    return { ok: true as const };
-  });
+    return { ok: true as const, value: { pilotStatus, online: false } };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+ } catch (error) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return { ok: false as const, status: 409 as const, error: "Operator state changed; refresh and try again" };
+  throw error;
+ }
+}
+
+export async function forceOperatorOffline(db: PrismaClient, userId: string) {
+ try {
+  return await db.$transaction(async tx => {
+    const operator = await tx.user.findFirst({ where: { id: userId, role: Role.OPERATOR }, select: { id: true, pendingOfferTripId: true } });
+    if (!operator) return { ok: false as const, status: 404 as const, error: "Operator not found" };
+    if (operator.pendingOfferTripId) return { ok: false as const, status: 409 as const, error: "Operator has an active offer; try again later" };
+    await tx.user.update({ where: { id: userId }, data: { online: false } });
+    return { ok: true as const, value: { online: false } };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+ } catch (error) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return { ok: false as const, status: 409 as const, error: "Operator state changed; refresh and try again" };
+  throw error;
+ }
 }

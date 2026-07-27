@@ -12,7 +12,7 @@ export async function GET() {
   if (user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const [profile, destinations, services] = await Promise.all([
     db.operatorProfile.findUnique({ where: { userId: user.id }, select: { operatingArea: true, serviceRadiusKm: true, supportsCustom: true, languages: true, accessibilityCapabilities: true, durationOptions: true, pilotStatus: true } }),
-    db.destination.findMany({ where: { active: true, custom: false }, select: { id: true, name: true, city: true }, orderBy: { name: "asc" } }),
+    db.destination.findMany({ where: { custom: false, OR: [{ active: true }, { operators: { some: { operatorId: user.id } } }] }, select: { id: true, name: true, city: true, active: true }, orderBy: { name: "asc" } }),
     db.operatorDestination.findMany({ where: { operatorId: user.id }, select: { destinationId: true } }),
   ]);
   return NextResponse.json({ profile, destinationIds: services.map(item => item.destinationId), destinations, online: user.online, complete: profileIsComplete(profile, services.length, profile?.supportsCustom ?? false), options: { durations: ALLOWED_DURATIONS, languages: ALLOWED_LANGUAGES, accessibility: ALLOWED_ACCESSIBILITY } });

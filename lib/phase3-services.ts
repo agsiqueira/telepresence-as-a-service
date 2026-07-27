@@ -200,8 +200,10 @@ export async function updateOperatorSettings(db: Database, operatorId: string, i
     return await runSerializable(db, async tx => {
       const { destinationIds, ...profileData } = input;
       const validArea = await tx.destination.count({ where: { active: true, city: { equals: input.operatingArea, mode: "insensitive" } } });
-      const validDestinations = await tx.destination.count({ where: { id: { in: destinationIds }, active: true, custom: false, city: { equals: input.operatingArea, mode: "insensitive" } } });
-      if (!validArea || validDestinations !== destinationIds.length) return { ok: false, status: 400, error: "One or more destinations are unavailable" } as const;
+      const currentInactive = await tx.operatorDestination.findMany({ where: { operatorId, destinationId: { in: destinationIds }, destination: { active: false } }, select: { destinationId: true } });
+      const allowedInactiveIds = currentInactive.map(value => value.destinationId);
+      const validDestinations = await tx.destination.count({ where: { id: { in: destinationIds.filter(id => !allowedInactiveIds.includes(id)) }, active: true, custom: false, city: { equals: input.operatingArea, mode: "insensitive" } } });
+      if (!validArea || validDestinations + allowedInactiveIds.length !== destinationIds.length) return { ok: false, status: 400, error: "One or more destinations are unavailable" } as const;
       const available = await tx.user.updateMany({
         where: { id: operatorId, role: Role.OPERATOR, pendingOfferTripId: null, activeTripId: null },
         data: { online: false },

@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+const read = path => readFileSync(path, "utf8");
+const auth = read("lib/admin-auth.ts"), admin = read("lib/admin.ts"), profiles = read("lib/profiles.ts"), participants = read("app/api/admin/participants/route.ts"), pilot = read("app/api/admin/participants/[reference]/pilot-status/route.ts"), offline = read("app/api/admin/participants/[reference]/offline/route.ts"), destinations = read("app/api/admin/destinations/route.ts"), destination = read("app/api/admin/destinations/[slug]/route.ts"), layout = read("app/admin/layout.tsx"), participantUi = read("components/AdminParticipants.tsx"), destinationUi = read("components/AdminDestinations.tsx"), requestService = read("lib/phase3-services.ts"), operatorSettings = read("app/api/operator/settings/route.ts"), schema = read("prisma/schema.prisma");
+assert.match(auth, /user\.role !== Role\.ADMIN/); assert.match(layout, /requirePageRole\(Role\.ADMIN\)/); assert.match(layout, /Participants/); assert.match(layout, /Destinations/);
+for (const route of [participants, pilot, offline, destinations, destination]) { assert.match(route, /authorizeAdminApi/); assert.match(route, /NextResponse\.json/); }
+assert.match(admin, /ADMIN_MAX_LIMIT = 50/); assert.match(admin, /orderBy: \[\{ createdAt: "desc" \}, \{ id: "desc" \}\]/); assert.match(admin, /publicDisplayName/); assert.doesNotMatch(participants, /clerkId|livekitRoom|accessibilityPreferences/);
+assert.match(profiles, /expectedStatus/); assert.match(profiles, /updateMany\(\{ where: \{ userId, pilotStatus/); assert.match(profiles, /pendingOfferTripId/); assert.match(profiles, /data: \{ online: false \}/);
+assert.match(profiles, /TransactionIsolationLevel\.Serializable/); assert.match(profiles, /P2034/);
+assert.match(destinations, /take: limit/); assert.match(destination, /updatedAt: expectedUpdatedAt/); assert.match(destination, /TransactionIsolationLevel\.Serializable/); assert.match(destination, /P2034/); assert.doesNotMatch(schema, /AdminAudit|AuditLog/); assert.equal(existsSync("prisma/migrations/20260727230000_phase5a_profiles_and_eligibility/migration.sql"), true);
+assert.match(requestService, /active: true/); assert.match(requestService, /currentInactive/); assert.match(operatorSettings, /operators: \{ some:/); assert.match(operatorSettings, /active: true/);
+for (const ui of [participantUi, destinationUi]) { assert.match(ui, /aria-busy/); assert.match(ui, /unauthorized/); assert.match(ui, /failed/); assert.match(ui, /min-h-11/); assert.match(ui, /Confirm/); }
+assert.match(participantUi, /Previous/); assert.match(participantUi, /Next/); assert.match(destinationUi, /Inactive—history preserved/); assert.doesNotMatch(destinationUi, /DELETE/);
+console.log("Phase 5B authorization, privacy, concurrency, destination, and UI structural assertions passed.");

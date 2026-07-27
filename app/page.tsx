@@ -10,7 +10,7 @@ export default async function HomePage() {
   if (user) {
     if (user.role === Role.VIEWER) redirect("/viewer");
     if (user.role === Role.OPERATOR) redirect("/operator");
-    return <main className="mx-auto max-w-xl px-4 py-16 text-center"><h1 className="text-3xl font-bold text-spartan-green">VirtualTrip pilot administration</h1><p className="mt-4 text-gray-600">Administrator access is configured. Pilot management tools arrive in Phase 5B.</p></main>;
+    redirect("/admin/participants");
   }
 
   return (
