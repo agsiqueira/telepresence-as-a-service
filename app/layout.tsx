@@ -24,8 +24,6 @@ export default function RootLayout({
             </Link>
             <nav className="flex items-center gap-4 text-sm">
               <SignedIn>
-                <Link href="/viewer">Request a visit</Link>
-                <Link href="/operator">Go online</Link>
                 <UserButton />
               </SignedIn>
               <SignedOut>
