@@ -8,7 +8,7 @@ const destinations = [
   ["cultural-venue", "Museum or cultural venue", "Visit a public cultural venue and explore current exhibits.", "Pilot City", "Venue information desk", "Culture", [30, 45, 60], false],
   ["waterfront-visit", "Nature or waterfront visit", "Enjoy an accessible outdoor route with scenic stops.", "Pilot City", "Waterfront visitor area", "Outdoors", [30, 45, 60], false],
   ["shopping-district", "Shopping district", "Browse local shops and public market areas.", "Pilot City", "District welcome point", "Shopping", [30, 45], false],
-  ["custom-destination", "Custom destination", "Describe another public place in the pilot operating area.", "Pilot City", "Public meeting point", "Custom", [15, 30, 45, 60], true],
+  ["custom-destination", "Custom destination request", "Request a safe, publicly accessible place in the pilot operating area.", "Pilot City", "A safe, practical place to begin the video", "Custom", [15, 30, 45, 60], true],
 ];
 
 async function main() {

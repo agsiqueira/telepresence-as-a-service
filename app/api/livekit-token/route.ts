@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   const { tripId } = body as { tripId?: string };
 
   if (!tripId) {
-    return NextResponse.json({ error: "tripId is required" }, { status: 400 });
+    return NextResponse.json({ error: "Visit is required" }, { status: 400 });
   }
 
   const trip = await db.trip.findUnique({ where: { id: tripId } });
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (trip.status !== TripStatus.ACCEPTED && trip.status !== TripStatus.IN_PROGRESS) {
-    return NextResponse.json({ error: "Trip is not active" }, { status: 409 });
+    return NextResponse.json({ error: "Visit is not active" }, { status: 409 });
   }
 
   const canPublishSources = isOperator

@@ -52,7 +52,7 @@ export async function listActiveDestinations(db: Database | Prisma.TransactionCl
 
 export type CreateTripInput = {
   destinationId: string;
-  meetingArea: string;
+  meetingArea?: string;
   requestedDuration: number;
   viewerNote?: string;
   preferredLanguage?: string;
@@ -103,7 +103,7 @@ export async function createTripRequest(
           destinationId: destination.id,
           destination: destination.custom ? input.customDestination! : destination.name,
           operatingArea: destination.city,
-          meetingArea: input.meetingArea,
+          meetingArea: input.meetingArea || null,
           requestedDuration: input.requestedDuration,
           viewerNote: input.viewerNote || null,
           preferredLanguage: input.preferredLanguage || null,
@@ -244,7 +244,7 @@ export function validateCreateTripInput(body: Record<string, unknown>): ServiceR
   const preferredLanguage = typeof body.preferredLanguage === "string" ? body.preferredLanguage : "";
   const accessibilityNeeds = normalizedList(body.accessibilityNeeds, ALLOWED_ACCESSIBILITY);
   const customDestination = typeof body.customDestination === "string" ? body.customDestination.trim() : "";
-  if (!destinationId || meetingArea.length < 2 || meetingArea.length > 120 || !Number.isInteger(requestedDuration) || viewerNote.length > 240 || !accessibilityNeeds) return { ok: false, status: 400, error: "Check the visit request" };
+  if (!destinationId || meetingArea.length > 120 || !Number.isInteger(requestedDuration) || viewerNote.length > 240 || !accessibilityNeeds) return { ok: false, status: 400, error: "Check the visit request" };
   if (preferredLanguage && !ALLOWED_LANGUAGES.includes(preferredLanguage as never)) return { ok: false, status: 400, error: "Choose an available language" };
   return { ok: true, value: { destinationId, meetingArea, requestedDuration, viewerNote, preferredLanguage, accessibilityNeeds, customDestination } };
 }

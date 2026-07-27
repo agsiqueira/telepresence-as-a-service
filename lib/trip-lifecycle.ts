@@ -45,16 +45,16 @@ export async function startTrip(
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.IN_PROGRESS) return { ok: true, value: trip };
-      if (trip.status !== TripStatus.ACCEPTED) return conflict("Trip cannot be started");
+      if (trip.status !== TripStatus.ACCEPTED) return conflict("Visit cannot be started");
       const changed = await tx.trip.updateMany({
         where: { id: tripId, status: TripStatus.ACCEPTED, operatorId: trip.operatorId },
         data: { status: TripStatus.IN_PROGRESS, startedAt: now },
       });
-      if (changed.count !== 1) return conflict("Trip changed while starting");
+      if (changed.count !== 1) return conflict("Visit changed while starting");
       return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) };
     });
   } catch (error) {
-    if (isSerializationFailure(error)) return conflict("Trip changed while starting");
+    if (isSerializationFailure(error)) return conflict("Visit changed while starting");
     throw error;
   }
 }
@@ -77,7 +77,7 @@ export async function cancelTrip(
         trip.status === TripStatus.ACCEPTED
       );
       const operatorAllowed = role === Role.OPERATOR && trip.status === TripStatus.ACCEPTED;
-      if (!viewerAllowed && !operatorAllowed) return conflict("Trip cannot be cancelled");
+      if (!viewerAllowed && !operatorAllowed) return conflict("Visit cannot be cancelled");
 
       const changed = await tx.trip.updateMany({
         where: {
@@ -95,7 +95,7 @@ export async function cancelTrip(
           offerExpiresAt: null,
         },
       });
-      if (changed.count !== 1) return conflict("Trip changed while cancellation was processed");
+      if (changed.count !== 1) return conflict("Visit changed while cancellation was processed");
 
       if (trip.status === TripStatus.OFFERED && trip.offeredOperatorId) {
         await tx.tripOffer.updateMany({
@@ -116,7 +116,7 @@ export async function cancelTrip(
       return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) };
     });
   } catch (error) {
-    if (isSerializationFailure(error)) return conflict("Trip changed while cancellation was processed");
+    if (isSerializationFailure(error)) return conflict("Visit changed while cancellation was processed");
     throw error;
   }
 }
@@ -133,12 +133,12 @@ export async function endTrip(
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.ENDED || trip.status === TripStatus.FEEDBACK_COMPLETED) return { ok: true, value: trip };
-      if (trip.status !== TripStatus.IN_PROGRESS) return conflict("Trip is not in progress");
+      if (trip.status !== TripStatus.IN_PROGRESS) return conflict("Visit is not in progress");
       const changed = await tx.trip.updateMany({
         where: { id: tripId, status: TripStatus.IN_PROGRESS, operatorId: trip.operatorId },
         data: { status: TripStatus.ENDED, endedAt: now },
       });
-      if (changed.count !== 1) return conflict("Trip changed while ending was processed");
+      if (changed.count !== 1) return conflict("Visit changed while ending was processed");
       if (trip.operatorId) {
         await tx.user.updateMany({
           where: { id: trip.operatorId, activeTripId: tripId },
@@ -148,7 +148,7 @@ export async function endTrip(
       return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) };
     });
   } catch (error) {
-    if (isSerializationFailure(error)) return conflict("Trip changed while ending was processed");
+    if (isSerializationFailure(error)) return conflict("Visit changed while ending was processed");
     throw error;
   }
 }
@@ -170,12 +170,12 @@ export async function completeViewerFeedback(
   try {
     return await serializable(db, async tx => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
-      if (!trip || trip.viewerId !== viewerId) return { ok: false, status: 404, error: "Trip not found" } as const;
+      if (!trip || trip.viewerId !== viewerId) return { ok: false, status: 404, error: "Visit not found" } as const;
       if (trip.status === TripStatus.FEEDBACK_COMPLETED) {
         const feedback = await tx.feedback.findUnique({ where: { tripId } });
         return { ok: true, value: { trip, feedback, skipped: Boolean(trip.feedbackSkippedAt) } } as const;
       }
-      if (trip.status !== TripStatus.ENDED) return conflict("Trip has not ended");
+      if (trip.status !== TripStatus.ENDED) return conflict("Visit has not ended");
       let feedback = await tx.feedback.findUnique({ where: { tripId } });
       if (input && !feedback) {
         feedback = await tx.feedback.create({ data: { tripId, viewerId, ...input } });
@@ -345,11 +345,11 @@ export async function listOperatorHistory(db: Database, operatorId: string, take
 
 export async function retryUnavailableTrip(db: Database, viewerId: string, tripId: string) {
   const previous = await db.trip.findFirst({ where: { id: tripId, viewerId, status: TripStatus.NO_OPERATOR_AVAILABLE } });
-  if (!previous || !previous.destinationId || !previous.meetingArea || !previous.requestedDuration) return { ok: false, status: 404, error: "Not found" } as const;
+  if (!previous || !previous.destinationId || !previous.requestedDuration) return { ok: false, status: 404, error: "Not found" } as const;
   const { createTripRequest } = await import("./phase3-services");
   return createTripRequest(db, viewerId, {
     destinationId: previous.destinationId,
-    meetingArea: previous.meetingArea,
+    meetingArea: previous.meetingArea ?? undefined,
     requestedDuration: previous.requestedDuration,
     viewerNote: previous.viewerNote ?? undefined,
     preferredLanguage: previous.preferredLanguage ?? undefined,

@@ -29,6 +29,29 @@ type HistoryTrip = Pick<Trip, "id" | "destination" | "status"> & {
   requestedAt: string;
 };
 
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+  const contentType = response.headers.get("content-type") ?? "";
+  const body = await response.text();
+  if (!body) throw new Error(`The server returned an empty response (${response.status})`);
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(`The server returned an unexpected response (${response.status})`);
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error(`The server returned invalid JSON (${response.status})`);
+  }
+  if (!response.ok) {
+    const message = typeof data === "object" && data && "error" in data && typeof data.error === "string"
+      ? data.error
+      : `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
 export default function ViewerPage() {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [selected, setSelected] = useState<Destination | null>(null);
@@ -42,6 +65,7 @@ export default function ViewerPage() {
   const [submitting, setSubmitting] = useState(false);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [history, setHistory] = useState<HistoryTrip[]>([]);
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const [phase, setPhase] = useState<Phase>("browse");
   const [videoToken, setVideoToken] = useState<{
     token: string;
@@ -55,28 +79,28 @@ export default function ViewerPage() {
   const tripId = trip?.id;
 
   useEffect(() => {
-    void fetch("/api/destinations", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => setDestinations(data.destinations ?? []));
-    void fetch("/api/trips/current", { cache: "no-store" })
-      .then(response => response.json())
+    void fetchJson<{ destinations: Destination[] }>("/api/destinations")
+      .then(data => setDestinations(data.destinations ?? []))
+      .catch(() => setLoadErrors(current => [...new Set([...current, "Unable to load destinations. Please try again."])]));
+    void fetchJson<{ trip: Trip | null }>("/api/trips/current")
       .then(data => {
         if (!data.trip) return;
         setTrip(data.trip);
-        setPhase(data.trip.status === "IN_PROGRESS" ? "waiting" : "waiting");
-      });
+        setPhase("waiting");
+      })
+      .catch(() => setLoadErrors(current => [...new Set([...current, "Unable to restore your current visit. Please try again."])]));
   }, []);
 
   useEffect(() => {
     if (phase !== "browse") return;
-    void fetch("/api/trips/history?limit=10", { cache: "no-store" })
-      .then(response => response.json())
-      .then(data => setHistory(data.history ?? []));
+    void fetchJson<{ history: HistoryTrip[] }>("/api/trips/history?limit=10")
+      .then(data => setHistory(data.history ?? []))
+      .catch(() => setLoadErrors(current => [...new Set([...current, "Unable to load visit history. Please try again."])]));
   }, [phase]);
 
   function chooseDestination(destination: Destination) {
     setSelected(destination);
-    setMeetingArea(destination.meetingArea);
+    setMeetingArea("");
     setDuration(destination.durationOptions[0] ?? 30);
     setRequestError("");
   }
@@ -129,7 +153,7 @@ export default function ViewerPage() {
       setTripEnded(true);
     } else {
       leaveRequestRef.current = false;
-      console.error("Unable to end trip");
+      console.error("Unable to end visit");
     }
   }
 
@@ -219,7 +243,7 @@ export default function ViewerPage() {
         }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
-          console.error("Unable to refresh trip status");
+          console.error("Unable to refresh visit status");
         }
       }
 
@@ -240,6 +264,7 @@ export default function ViewerPage() {
       <div className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="text-3xl font-bold text-spartan-green">Choose a destination</h1>
         <p className="mb-6 mt-2 text-gray-600">Browse active pilot destinations for an immediate virtual visit.</p>
+        {loadErrors.length > 0 && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert"><p className="font-semibold">Some visit information could not be loaded.</p><ul className="mt-1 list-disc pl-5">{loadErrors.map(message => <li key={message}>{message}</li>)}</ul></div>}
         <div className="grid gap-3 sm:grid-cols-2">
           {destinations.map((destination) => (
             <button
@@ -258,18 +283,18 @@ export default function ViewerPage() {
         </div>
         {selected && (
           <div className="mt-6 rounded-xl border border-gray-200 p-4">
-            <label className="block text-sm font-medium" htmlFor="meeting-area">Meeting instructions within {selected.city}</label>
-            <p className="mt-1 text-xs text-gray-500">Describe where to meet. Operator matching uses the destination&apos;s operating area, not this free-text note.</p>
-            <input id="meeting-area" value={meetingArea} onChange={(event) => setMeetingArea(event.target.value)} maxLength={120} className="mt-1 min-h-11 w-full rounded-lg border px-3" />
+            <label className="block text-sm font-medium" htmlFor="meeting-area">Starting-point preference (optional)</label>
+            <p className="mt-1 text-xs text-gray-500">If you know where you would like the live video to begin, tell the operator. Otherwise, the operator will choose an appropriate starting point.</p>
+            <input id="meeting-area" value={meetingArea} onChange={(event) => setMeetingArea(event.target.value)} maxLength={120} placeholder="Example: Begin outside the main entrance" className="mt-2 min-h-11 w-full rounded-lg border px-3" />
             <label className="mt-4 block text-sm font-medium" htmlFor="duration">Expected duration</label>
             <select id="duration" value={duration} onChange={(event) => setDuration(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border px-3">
               {selected.durationOptions.map((option) => <option key={option} value={option}>{option} minutes</option>)}
             </select>
-            {selected.custom && <><label className="mt-4 block text-sm font-medium" htmlFor="custom-destination">Custom public destination</label><input id="custom-destination" value={customDestination} onChange={(event) => setCustomDestination(event.target.value)} maxLength={120} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></>}
+            {selected.custom && <><label className="mt-4 block text-sm font-medium" htmlFor="custom-destination">Custom destination request</label><p className="mt-1 text-xs text-gray-500">Choose a safe, publicly accessible place where an operator may provide a video visit.</p><input id="custom-destination" value={customDestination} onChange={(event) => setCustomDestination(event.target.value)} maxLength={120} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></>}
             <label className="mt-4 block text-sm font-medium" htmlFor="language">Preferred language</label>
             <select id="language" value={language} onChange={(event) => setLanguage(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border px-3"><option value="">No preference</option>{["English", "Spanish", "French", "Portuguese"].map((item) => <option key={item}>{item}</option>)}</select>
             <fieldset className="mt-4"><legend className="text-sm font-medium">Accessibility needs</legend>{["Wheelchair-accessible route support", "Low-noise environment preference", "Visual-description assistance", "Slower-paced visit", "Other"].map((item) => <label key={item} className="mt-2 flex gap-2 text-sm"><input type="checkbox" checked={accessibilityNeeds.includes(item)} onChange={(event) => setAccessibilityNeeds((current) => event.target.checked ? [...current, item] : current.filter((value) => value !== item))} />{item}</label>)}</fieldset>
-            <label className="mt-4 block text-sm font-medium" htmlFor="viewer-note">Note for the operator (optional)</label>
+            <label className="mt-4 block text-sm font-medium" htmlFor="viewer-note">Visit instructions (optional)</label>
             <textarea id="viewer-note" value={viewerNote} onChange={(event) => setViewerNote(event.target.value)} maxLength={240} className="mt-1 w-full rounded-lg border p-3" />
             <button type="button" onClick={() => setPhase("review")} className="mt-5 min-h-12 w-full rounded-lg bg-spartan-green px-5 font-semibold text-white">Review request</button>
           </div>
@@ -283,7 +308,7 @@ export default function ViewerPage() {
   }
 
   if (phase === "review" && selected) {
-    return <div className="mx-auto max-w-md px-4 py-10"><p className="text-sm font-semibold uppercase text-spartan-green">Immediate visit</p><h1 className="mt-1 text-2xl font-bold">Review your request</h1><dl className="mt-6 space-y-3 rounded-xl border p-4"><div><dt className="text-xs text-gray-500">Destination</dt><dd>{selected.custom ? customDestination : selected.name}</dd></div><div><dt className="text-xs text-gray-500">Meeting instructions</dt><dd>{meetingArea}</dd></div><div><dt className="text-xs text-gray-500">Duration</dt><dd>{duration} minutes</dd></div><div><dt className="text-xs text-gray-500">Language</dt><dd>{language || "No preference"}</dd></div></dl>{requestError && <p className="mt-4 text-sm text-red-600" role="alert">{requestError}</p>}<button type="button" disabled={submitting} onClick={requestTrip} className="mt-6 min-h-12 w-full rounded-lg bg-spartan-green font-semibold text-white disabled:opacity-50">{submitting ? "Requesting…" : "Request this visit"}</button><button type="button" onClick={() => setPhase("browse")} className="mt-3 min-h-11 w-full rounded-lg border">Edit details</button></div>;
+    return <div className="mx-auto max-w-md px-4 py-10"><p className="text-sm font-semibold uppercase text-spartan-green">Immediate visit</p><h1 className="mt-1 text-2xl font-bold">Review your request</h1><dl className="mt-6 space-y-3 rounded-xl border p-4"><div><dt className="text-xs text-gray-500">Destination or experience</dt><dd>{selected.custom ? customDestination : selected.name}</dd></div><div><dt className="text-xs text-gray-500">Starting-point preference</dt><dd>{meetingArea || "No preference — the operator will choose an appropriate place to begin."}</dd></div><div><dt className="text-xs text-gray-500">Visit instructions</dt><dd>{viewerNote || "No additional instructions"}</dd></div><div><dt className="text-xs text-gray-500">Duration</dt><dd>{duration} minutes</dd></div><div><dt className="text-xs text-gray-500">Language</dt><dd>{language || "No preference"}</dd></div></dl>{requestError && <p className="mt-4 text-sm text-red-600" role="alert">{requestError}</p>}<button type="button" disabled={submitting} onClick={requestTrip} className="mt-6 min-h-12 w-full rounded-lg bg-spartan-green font-semibold text-white disabled:opacity-50">{submitting ? "Requesting…" : "Request this visit"}</button><button type="button" onClick={() => setPhase("browse")} className="mt-3 min-h-11 w-full rounded-lg border">Edit details</button></div>;
   }
 
   if (phase === "waiting") {
@@ -312,7 +337,7 @@ export default function ViewerPage() {
           onClick={cancelTrip}
           className="border border-gray-300 px-5 py-2 rounded-md"
         >
-          Cancel
+          Cancel request
         </button>
       </div>
     );

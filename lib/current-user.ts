@@ -16,8 +16,10 @@ export async function getCurrentUser() {
     clerkUser?.emailAddresses[0]?.emailAddress ??
     null;
 
-  return db.user.create({
-    data: { clerkId: userId, name },
+  return db.user.upsert({
+    where: { clerkId: userId },
+    update: {},
+    create: { clerkId: userId, name },
   });
 }
 

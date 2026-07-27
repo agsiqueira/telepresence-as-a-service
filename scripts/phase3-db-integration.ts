@@ -39,7 +39,7 @@ async function operator(destinationId: string, options: { area?: string; online?
 async function rawTrip(viewerId: string, destinationId: string, data: Partial<Prisma.TripUncheckedCreateInput> = {}) {
   return db.trip.create({ data: { viewerId, destinationId, destination: "Test destination", operatingArea: "Pilot City", meetingArea: "Descriptive instructions", requestedDuration: 30, livekitRoom: `${run}-${randomUUID()}`, ...data } });
 }
-const requestInput = (destinationId: string) => ({ destinationId, meetingArea: "Public entrance", requestedDuration: 30, viewerNote: "Meet beside the sign", preferredLanguage: "", accessibilityNeeds: [] as string[], customDestination: "" });
+const requestInput = (destinationId: string) => ({ destinationId, meetingArea: "Begin outside the main entrance", requestedDuration: 30, viewerNote: "Please show the main exhibits", preferredLanguage: "", accessibilityNeeds: [] as string[], customDestination: "" });
 const settings = (destinationId: string, radius = 30): OperatorSettingsInput => ({ operatingArea: "Pilot City", serviceRadiusKm: radius, supportsCustom: false, languages: ["English"], accessibilityCapabilities: [], durationOptions: [30], destinationIds: [destinationId] });
 
 async function assertOfferConsistent(tripId: string) {
@@ -69,6 +69,27 @@ async function main() {
     const catalog = await listActiveDestinations(db);
     assert.ok(!catalog.some(value => value.id === inactive.id));
     assert.deepEqual(Object.keys(catalog[0]).sort(), ["category", "city", "custom", "durationOptions", "id", "imageUrl", "meetingArea", "name", "shortDescription"].sort());
+  });
+
+  await test("optional starting preference and operator presentation", async () => {
+    const viewerWithout = await user(Role.VIEWER); await operator(d.id);
+    const without = await createTripRequest(db, viewerWithout.id, { ...requestInput(d.id), meetingArea: "" }, () => `${run}-${randomUUID()}`);
+    assert.equal(without.ok, true);
+    if (!without.ok) return;
+    const withoutTrip = await db.trip.findUniqueOrThrow({ where: { id: without.value.trip.id } });
+    assert.equal(withoutTrip.meetingArea, null);
+    assert.ok(withoutTrip.offeredOperatorId);
+    assert.equal((await getCurrentOffer(db, withoutTrip.offeredOperatorId!))?.meetingArea, null);
+
+    await db.user.updateMany({ where: { clerkId: { startsWith: run }, role: Role.OPERATOR }, data: { online: false } });
+    const viewerWith = await user(Role.VIEWER); await operator(d.id);
+    const preference = "Begin outside the main entrance";
+    const supplied = await createTripRequest(db, viewerWith.id, { ...requestInput(d.id), meetingArea: preference }, () => `${run}-${randomUUID()}`);
+    assert.equal(supplied.ok, true);
+    if (!supplied.ok) return;
+    const suppliedTrip = await db.trip.findUniqueOrThrow({ where: { id: supplied.value.trip.id } });
+    assert.ok(suppliedTrip.offeredOperatorId);
+    assert.equal((await getCurrentOffer(db, suppliedTrip.offeredOperatorId!))?.meetingArea, preference);
   });
 
   await test("concurrent assignment to one trip", async () => {
