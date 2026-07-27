@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
 import FeedbackForm from "@/components/FeedbackForm";
+import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
   id: string;
@@ -72,7 +73,8 @@ export default function ViewerPage() {
     url: string;
   } | null>(null);
   const [tripEnded, setTripEnded] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pollingMessage, setPollingMessage] = useState("");
+  const [pollRetry, setPollRetry] = useState(0);
   const endingRef = useRef(false);
   const feedbackTransitionRef = useRef(false);
   const leaveRequestRef = useRef(false);
@@ -163,6 +165,7 @@ export default function ViewerPage() {
     feedbackTransitionRef.current = true;
     setTripEnded(false);
     setVideoToken(null);
+    setPollingMessage("");
     setPhase("feedback");
   }
 
@@ -177,6 +180,7 @@ export default function ViewerPage() {
     setTrip(null);
     setVideoToken(null);
     setTripEnded(false);
+    setPollingMessage("");
     endingRef.current = false;
     feedbackTransitionRef.current = false;
     leaveRequestRef.current = false;
@@ -185,79 +189,65 @@ export default function ViewerPage() {
 
   useEffect(() => {
     if (phase !== "waiting" || !tripId) return;
+    setPollingMessage("");
+    return createResilientPoller({
+      intervalMs: 2500,
+      maxIntervalMs: 20000,
+      poll: async signal => {
+        const res = await fetch(`/api/trips/${tripId}`, { cache: "no-store", signal });
+        const data = await requireJsonResponse<{ trip: Trip | null }>(res);
+        if (!data.trip) return "stop";
+        setTrip(data.trip);
 
-    pollRef.current = setInterval(async () => {
-      const res = await fetch(`/api/trips/${tripId}`);
-      const data = await res.json();
-      if (!data.trip) return;
-      setTrip(data.trip);
-
-      if (data.trip.status === "IN_PROGRESS") {
-        const tokenRes = await fetch("/api/livekit-token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tripId }),
-        });
-        const tokenData = await tokenRes.json();
-        setVideoToken({ token: tokenData.token, url: tokenData.url });
-        endingRef.current = false;
-        feedbackTransitionRef.current = false;
-        leaveRequestRef.current = false;
-        setPhase("call");
-      } else if (data.trip.status === "CANCELLED") {
-        setPhase("browse");
-      }
-    }, 2500);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [phase, tripId]);
+        if (data.trip.status === "IN_PROGRESS") {
+          const tokenRes = await fetch("/api/livekit-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tripId }),
+            signal,
+          });
+          const tokenData = await requireJsonResponse<{ token: string; url: string }>(tokenRes);
+          setVideoToken({ token: tokenData.token, url: tokenData.url });
+          endingRef.current = false;
+          feedbackTransitionRef.current = false;
+          leaveRequestRef.current = false;
+          setPhase("call");
+          return "stop";
+        }
+        if (data.trip.status === "CANCELLED" || data.trip.status === "ENDED" || data.trip.status === "FEEDBACK_COMPLETED") {
+          setPhase(data.trip.status === "ENDED" ? "feedback" : "browse");
+          return "stop";
+        }
+        return "continue";
+      },
+      onPersistentFailure: () => setPollingMessage("Connection interrupted. Visit status will update when the connection returns."),
+      onRecovery: () => setPollingMessage(""),
+    });
+  }, [phase, tripId, pollRetry]);
 
   useEffect(() => {
     if (phase !== "call" || !tripId) return;
 
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let request: AbortController | undefined;
-
-    async function poll() {
-      request = new AbortController();
-
-      try {
-        const res = await fetch(`/api/trips/${tripId}`, {
-          cache: "no-store",
-          signal: request.signal,
-        });
-        const data = await res.json();
-
-        if (
-          !stopped &&
-          data.trip?.status === "ENDED" &&
-          !endingRef.current
-        ) {
+    setPollingMessage("");
+    return createResilientPoller({
+      intervalMs: 1000,
+      maxIntervalMs: 8000,
+      poll: async signal => {
+        const res = await fetch(`/api/trips/${tripId}`, { cache: "no-store", signal });
+        const data = await requireJsonResponse<{ trip: Trip | null }>(res);
+        if (data.trip?.status === "ENDED" && !endingRef.current) {
           endingRef.current = true;
           setTrip(data.trip);
           setTripEnded(true);
-          return;
+          return "stop";
         }
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          console.error("Unable to refresh visit status");
-        }
-      }
-
-      if (!stopped) timer = setTimeout(poll, 1000);
-    }
-
-    void poll();
-
-    return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-      request?.abort();
-    };
-  }, [phase, tripId]);
+        if (data.trip && data.trip.status !== "IN_PROGRESS") return "stop";
+        return "continue";
+      },
+      onPersistentFailure: () => setPollingMessage("Connection interrupted. Visit status will update when the connection returns."),
+      onRecovery: () => setPollingMessage(""),
+    });
+  }, [phase, tripId, pollRetry]);
 
   if (phase === "browse") {
     return (
@@ -329,6 +319,7 @@ export default function ViewerPage() {
     }
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />
         <h1 className="text-xl font-semibold text-spartan-green mb-2">
           {trip?.status === "ACCEPTED" ? "Request accepted. Waiting for the visit to begin" : trip?.status === "OFFERED" || trip?.hasOffer ? "An operator is reviewing your request" : `Looking for an operator for ${trip?.destination}…`}
         </h1>
@@ -345,7 +336,7 @@ export default function ViewerPage() {
 
   if (phase === "call" && videoToken && trip?.acceptedAt) {
     return (
-      <VideoRoom
+      <><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /><VideoRoom
         token={videoToken.token}
         serverUrl={videoToken.url}
         destination={trip.destination}
@@ -356,7 +347,7 @@ export default function ViewerPage() {
         disconnect={tripEnded}
         onLeave={leaveCall}
         onAuthoritativeDisconnect={transitionToFeedback}
-      />
+      /></>
     );
   }
 
@@ -365,4 +356,9 @@ export default function ViewerPage() {
   }
 
   return null;
+}
+
+function PollingNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
+  if (!message) return null;
+  return <div className="m-4 flex items-center justify-between gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status"><span>{message}</span><button type="button" onClick={onRetry} className="min-h-11 shrink-0 rounded-md border border-amber-700 px-3 font-semibold">Retry</button></div>;
 }

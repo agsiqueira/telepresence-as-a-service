@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
+import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
   id: string;
@@ -59,6 +60,8 @@ export default function OperatorPage() {
   const [history, setHistory] = useState<OperatorHistory[]>([]);
   const [videoToken, setVideoToken] = useState<{ token: string; url: string } | null>(null);
   const [tripEnded, setTripEnded] = useState(false);
+  const [pollingMessage, setPollingMessage] = useState("");
+  const [pollRetry, setPollRetry] = useState(0);
   const endingRef = useRef(false);
   const endRequestRef = useRef(false);
   const teardownRef = useRef(false);
@@ -147,17 +150,20 @@ export default function OperatorPage() {
 
   useEffect(() => {
     if (!online || activeTrip) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    async function poll() {
-      const response = await fetch("/api/operator/offers", { cache: "no-store" });
-      const data = await response.json();
-      if (!stopped) setOffer(data.offer ?? null);
-      if (!stopped) timer = setTimeout(poll, 2000);
-    }
-    void poll();
-    return () => { stopped = true; if (timer) clearTimeout(timer); };
-  }, [online, activeTrip]);
+    setPollingMessage("");
+    return createResilientPoller({
+      intervalMs: 2000,
+      maxIntervalMs: 16000,
+      poll: async signal => {
+        const response = await fetch("/api/operator/offers", { cache: "no-store", signal });
+        const data = await requireJsonResponse<{ offer: Offer | null }>(response);
+        setOffer(data.offer ?? null);
+        return "continue";
+      },
+      onPersistentFailure: () => setPollingMessage("Connection interrupted. New visit offers may be delayed."),
+      onRecovery: () => setPollingMessage(""),
+    });
+  }, [online, activeTrip, pollRetry]);
 
   useEffect(() => {
     if (!offer) return;
@@ -222,35 +228,33 @@ export default function OperatorPage() {
     setTripEnded(false);
     setActiveTrip(null);
     setVideoToken(null);
+    setPollingMessage("");
   }
 
   const activeTripId = activeTrip?.id;
   useEffect(() => {
     if (!activeTripId) return;
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let request: AbortController | undefined;
-    async function poll() {
-      request = new AbortController();
-      try {
-        const response = await fetch(`/api/trips/${activeTripId}`, { cache: "no-store", signal: request.signal });
-        const data = await response.json();
-        if (!stopped && response.ok && data.trip?.status !== "IN_PROGRESS" && !endingRef.current) {
+    setPollingMessage("");
+    return createResilientPoller({
+      intervalMs: 1000,
+      maxIntervalMs: 8000,
+      poll: async signal => {
+        const response = await fetch(`/api/trips/${activeTripId}`, { cache: "no-store", signal });
+        const data = await requireJsonResponse<{ trip: Trip }>(response);
+        if (data.trip.status !== "IN_PROGRESS" && !endingRef.current) {
           endingRef.current = true;
           setTripEnded(true);
-          return;
+          return "stop";
         }
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Unable to refresh visit status");
-      }
-      if (!stopped) timer = setTimeout(poll, 1000);
-    }
-    void poll();
-    return () => { stopped = true; if (timer) clearTimeout(timer); request?.abort(); };
-  }, [activeTripId]);
+        return "continue";
+      },
+      onPersistentFailure: () => setPollingMessage("Connection interrupted. Visit status will update when the connection returns."),
+      onRecovery: () => setPollingMessage(""),
+    });
+  }, [activeTripId, pollRetry]);
 
   if (activeTrip && videoToken && activeTrip.acceptedAt) {
-    return <VideoRoom token={videoToken.token} serverUrl={videoToken.url} destination={activeTrip.destination} acceptedAt={activeTrip.acceptedAt} canPublishCamera canPublishMicrophone disconnect={tripEnded} onAuthoritativeDisconnect={clearActiveCall} onEnd={endTrip} />;
+    return <><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /><VideoRoom token={videoToken.token} serverUrl={videoToken.url} destination={activeTrip.destination} acceptedAt={activeTrip.acceptedAt} canPublishCamera canPublishMicrophone disconnect={tripEnded} onAuthoritativeDisconnect={clearActiveCall} onEnd={endTrip} /></>;
   }
 
   const toggleString = (value: string, values: string[], setValues: (values: string[]) => void) => setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
@@ -259,6 +263,7 @@ export default function OperatorPage() {
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase text-spartan-green">Operator marketplace</p><h1 className="text-3xl font-bold">Service dashboard</h1></div><button type="button" disabled={!setupComplete} onClick={toggleOnline} className={`min-h-12 rounded-full px-5 font-semibold disabled:opacity-40 ${online ? "bg-spartan-green text-white" : "border border-spartan-green text-spartan-green"}`}>{online ? "Online" : "Go online"}</button></div>
       {message && <p className="mt-4 rounded-lg bg-gray-100 p-3 text-sm" role="status">{message}</p>}
+      <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />
 
       {(editing || !setupComplete) ? (
         <section className="mt-6 rounded-2xl border p-5"><h2 className="text-xl font-bold">Service setup</h2><p className="mt-1 text-sm text-gray-600">Complete the required settings before going online.</p>
@@ -278,4 +283,9 @@ export default function OperatorPage() {
       {!editing && !offer && <section className="mt-8" aria-labelledby="operator-history-heading"><h2 id="operator-history-heading" className="text-xl font-semibold">Recent offers and visits</h2>{history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No offer history yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map((item, index) => <li key={`${item.trip.id}-${index}`} className="p-3"><p className="font-medium">{item.trip.destination}</p><p className="text-sm text-gray-600">Offer {item.status.toLowerCase()} · Visit {item.trip.status.replaceAll("_", " ").toLowerCase()}</p></li>)}</ul>}</section>}
     </div>
   );
+}
+
+function PollingNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
+  if (!message) return null;
+  return <div className="m-4 flex items-center justify-between gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status"><span>{message}</span><button type="button" onClick={onRetry} className="min-h-11 shrink-0 rounded-md border border-amber-700 px-3 font-semibold">Retry</button></div>;
 }
