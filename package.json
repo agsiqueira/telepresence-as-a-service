@@ -10,6 +10,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "seed": "node prisma/seed.js",
+    "test:phase3": "node scripts/validate-phase3.mjs",
+    "test:phase3:db": "node scripts/run-phase3-db-tests.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {

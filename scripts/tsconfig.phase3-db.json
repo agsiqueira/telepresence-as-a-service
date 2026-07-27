@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": "../.phase3-test-build",
+    "rootDir": ".."
+  },
+  "include": ["phase3-db-integration.ts", "../lib/marketplace.ts", "../lib/phase3-services.ts"]
+}

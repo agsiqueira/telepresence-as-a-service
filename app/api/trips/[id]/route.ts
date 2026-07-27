@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireCurrentUser } from "@/lib/current-user";
+import { assignWaitingTrips, expireAndReassignOffers } from "@/lib/marketplace";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const user = await requireCurrentUser();
-  const trip = await db.trip.findUnique({ where: { id: params.id } });
+  let trip = await db.trip.findUnique({ where: { id: params.id } });
   const isViewer = user.role === Role.VIEWER && trip?.viewerId === user.id;
   const isOperator =
     user.role === Role.OPERATOR && trip?.operatorId === user.id;
@@ -17,5 +18,27 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ trip });
+  if (isViewer && trip.status === "REQUESTED") {
+    await db.$transaction(async (tx) => {
+      await expireAndReassignOffers(tx);
+      await assignWaitingTrips(tx);
+    });
+    trip = await db.trip.findUnique({ where: { id: params.id } });
+    if (!trip) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({
+    trip: {
+      id: trip.id,
+      destination: trip.destination,
+      meetingArea: trip.meetingArea,
+      requestedDuration: trip.requestedDuration,
+      preferredLanguage: trip.preferredLanguage,
+      accessibilityNeeds: trip.accessibilityNeeds,
+      status: trip.status,
+      requestedAt: trip.requestedAt,
+      acceptedAt: trip.acceptedAt,
+      hasOffer: Boolean(trip.offeredOperatorId && trip.offerExpiresAt),
+    },
+  });
 }

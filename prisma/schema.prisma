@@ -19,37 +19,130 @@ enum TripStatus {
   CANCELLED // viewer cancelled before anyone accepted
 }
 
-model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  name      String?
-  role      Role     @default(VIEWER)
-  online    Boolean  @default(false) // operator's "go online" toggle
-  createdAt DateTime @default(now())
+enum OfferStatus {
+  OFFERED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
 
-  tripsAsViewer   Trip[]     @relation("TripsAsViewer")
-  tripsAsOperator Trip[]     @relation("TripsAsOperator")
-  feedback        Feedback[]
+model User {
+  id                 String   @id @default(cuid())
+  clerkId            String   @unique
+  name               String?
+  role               Role     @default(VIEWER)
+  online             Boolean  @default(false) // operator's "go online" toggle
+  // Internal marketplace reservations claimed inside serializable transactions.
+  pendingOfferTripId String?
+  activeTripId       String?
+  createdAt          DateTime @default(now())
+
+  tripsAsViewer       Trip[]                @relation("TripsAsViewer")
+  tripsAsOperator     Trip[]                @relation("TripsAsOperator")
+  feedback            Feedback[]
+  operatorProfile     OperatorProfile?
+  destinationServices OperatorDestination[]
+  offers              TripOffer[]           @relation("OperatorOffers")
+  offeredTrips        Trip[]                @relation("OfferedOperator")
+
+  @@index([pendingOfferTripId])
+  @@index([activeTripId])
+}
+
+model Destination {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  shortDescription String
+  city             String
+  meetingArea      String
+  category         String
+  durationOptions  Int[]
+  active           Boolean  @default(true)
+  imageUrl         String?
+  custom           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  trips     Trip[]
+  operators OperatorDestination[]
+
+  @@index([active, category])
+}
+
+model OperatorProfile {
+  id                        String   @id @default(cuid())
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                    String   @unique
+  operatingArea             String
+  serviceRadiusKm           Float
+  supportsCustom            Boolean  @default(false)
+  languages                 String[]
+  accessibilityCapabilities String[]
+  durationOptions           Int[]
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+model OperatorDestination {
+  operator      User        @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  operatorId    String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  destinationId String
+
+  @@id([operatorId, destinationId])
+  @@index([destinationId])
 }
 
 model Trip {
-  id          String     @id @default(cuid())
-  viewer      User       @relation("TripsAsViewer", fields: [viewerId], references: [id])
-  viewerId    String
-  operator    User?      @relation("TripsAsOperator", fields: [operatorId], references: [id])
-  operatorId  String?
-  destination String
-  lat         Float?
-  lng         Float?
-  livekitRoom String     @unique
-  status      TripStatus @default(REQUESTED)
-  requestedAt DateTime   @default(now())
-  acceptedAt  DateTime?
-  endedAt     DateTime?
+  id                 String       @id @default(cuid())
+  viewer             User         @relation("TripsAsViewer", fields: [viewerId], references: [id])
+  viewerId           String
+  operator           User?        @relation("TripsAsOperator", fields: [operatorId], references: [id])
+  operatorId         String?
+  offeredOperator    User?        @relation("OfferedOperator", fields: [offeredOperatorId], references: [id])
+  offeredOperatorId  String?
+  destinationRef     Destination? @relation(fields: [destinationId], references: [id])
+  destinationId      String?
+  destination        String
+  operatingArea      String?
+  meetingArea        String?
+  requestedDuration  Int?
+  viewerNote         String?
+  preferredLanguage  String?
+  accessibilityNeeds String[]     @default([])
+  customDestination  String?
+  immediate          Boolean      @default(true)
+  offerExpiresAt     DateTime?
+  lat                Float?
+  lng                Float?
+  livekitRoom        String       @unique
+  status             TripStatus   @default(REQUESTED)
+  requestedAt        DateTime     @default(now())
+  acceptedAt         DateTime?
+  endedAt            DateTime?
 
   feedback Feedback[]
+  offers   TripOffer[]
 
   @@index([status])
+  @@index([offeredOperatorId, status, offerExpiresAt])
+  @@index([destinationId])
+}
+
+model TripOffer {
+  id          String      @id @default(cuid())
+  trip        Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId      String
+  operator    User        @relation("OperatorOffers", fields: [operatorId], references: [id], onDelete: Cascade)
+  operatorId  String
+  status      OfferStatus @default(OFFERED)
+  expiresAt   DateTime
+  createdAt   DateTime    @default(now())
+  respondedAt DateTime?
+
+  @@unique([tripId, operatorId])
+  @@index([operatorId, status, expiresAt])
 }
 
 model Feedback {

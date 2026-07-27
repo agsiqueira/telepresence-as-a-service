@@ -1,0 +1,282 @@
+import "server-only";
+
+import { randomUUID } from "crypto";
+import { OfferStatus, Prisma, PrismaClient, Role, TripStatus } from "@prisma/client";
+import {
+  ALLOWED_ACCESSIBILITY,
+  ALLOWED_DURATIONS,
+  ALLOWED_LANGUAGES,
+  assignNextOperator,
+  normalizedList,
+} from "./marketplace";
+
+type Database = PrismaClient;
+export type ServiceFailure = { ok: false; status: 400 | 403 | 404 | 409; error: string };
+export type ServiceSuccess<T> = { ok: true; value: T };
+export type ServiceResult<T> = ServiceSuccess<T> | ServiceFailure;
+
+const conflict = (error: string): ServiceFailure => ({ ok: false, status: 409, error });
+const serializableConflict = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+
+async function runSerializable<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (!serializableConflict(error) || attempt >= 1) throw error;
+    }
+  }
+}
+
+export const PUBLIC_DESTINATION_SELECT = {
+  id: true,
+  name: true,
+  shortDescription: true,
+  city: true,
+  meetingArea: true,
+  category: true,
+  durationOptions: true,
+  imageUrl: true,
+  custom: true,
+} satisfies Prisma.DestinationSelect;
+
+export async function listActiveDestinations(db: Database | Prisma.TransactionClient) {
+  return db.destination.findMany({
+    where: { active: true },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+    select: PUBLIC_DESTINATION_SELECT,
+  });
+}
+
+export type CreateTripInput = {
+  destinationId: string;
+  meetingArea: string;
+  requestedDuration: number;
+  viewerNote?: string;
+  preferredLanguage?: string;
+  accessibilityNeeds: string[];
+  customDestination?: string;
+};
+
+export async function createTripRequest(
+  db: Database,
+  viewerId: string,
+  input: CreateTripInput,
+  roomId = () => `trip-${randomUUID()}`
+): Promise<ServiceResult<{ trip: Prisma.TripGetPayload<object>; created: boolean }>> {
+  try {
+    return await runSerializable(db, async tx => {
+      const existing = await tx.trip.findFirst({
+        where: { viewerId, status: { in: [TripStatus.REQUESTED, TripStatus.ACCEPTED] } },
+      });
+      if (existing) return conflict("An active visit request already exists");
+
+      const destination = await tx.destination.findFirst({
+        where: { id: input.destinationId, active: true },
+      });
+      if (!destination) return { ok: false, status: 400, error: "Destination is unavailable" };
+      if (!destination.durationOptions.includes(input.requestedDuration)) {
+        return { ok: false, status: 400, error: "Choose an available duration" };
+      }
+      if (destination.custom && (!input.customDestination || input.customDestination.length < 3 || input.customDestination.length > 120)) {
+        return { ok: false, status: 400, error: "Describe the custom destination" };
+      }
+      if (!destination.custom && input.customDestination) {
+        return { ok: false, status: 400, error: "Custom details are not valid for this destination" };
+      }
+      const created = await tx.trip.create({
+        data: {
+          viewerId,
+          destinationId: destination.id,
+          destination: destination.custom ? input.customDestination! : destination.name,
+          operatingArea: destination.city,
+          meetingArea: input.meetingArea,
+          requestedDuration: input.requestedDuration,
+          viewerNote: input.viewerNote || null,
+          preferredLanguage: input.preferredLanguage || null,
+          accessibilityNeeds: input.accessibilityNeeds,
+          customDestination: destination.custom ? input.customDestination! : null,
+          immediate: true,
+          livekitRoom: roomId(),
+        },
+      });
+      const assigned = await assignNextOperator(tx, created.id);
+      if (destination.custom && !assigned) throw new Error("NO_CUSTOM_OPERATOR");
+      return { ok: true, value: { trip: await tx.trip.findUniqueOrThrow({ where: { id: created.id } }), created: true } };
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "NO_CUSTOM_OPERATOR") return conflict("No operator currently supports this custom request");
+    if (serializableConflict(error)) return conflict("A request is already being processed");
+    throw error;
+  }
+}
+
+export async function acceptTripOffer(db: Database, operatorId: string, tripId: string, now = new Date()) {
+  try {
+    return await runSerializable(db, async tx => {
+      const current = await tx.trip.findUnique({ where: { id: tripId } });
+      if (current?.status === TripStatus.ACCEPTED && current.operatorId === operatorId) {
+        return { ok: true, value: current } as const;
+      }
+      const offer = await tx.tripOffer.findUnique({ where: { tripId_operatorId: { tripId, operatorId } } });
+      if (!current || current.status !== TripStatus.REQUESTED || current.offeredOperatorId !== operatorId ||
+          !current.offerExpiresAt || current.offerExpiresAt <= now || offer?.status !== OfferStatus.OFFERED || offer.expiresAt <= now) {
+        return conflict("Offer is no longer available");
+      }
+      const operator = await tx.user.updateMany({
+        where: { id: operatorId, role: Role.OPERATOR, online: true, pendingOfferTripId: tripId, activeTripId: null },
+        data: { pendingOfferTripId: null, activeTripId: tripId },
+      });
+      if (operator.count !== 1) return conflict("Offer is no longer available");
+      const claimed = await tx.trip.updateMany({
+        where: { id: tripId, status: TripStatus.REQUESTED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now } },
+        data: { operatorId, offeredOperatorId: null, offerExpiresAt: null, status: TripStatus.ACCEPTED, acceptedAt: now },
+      });
+      if (claimed.count !== 1) throw new Error("ACCEPTANCE_RACE");
+      const history = await tx.tripOffer.updateMany({
+        where: { tripId, operatorId, status: OfferStatus.OFFERED, expiresAt: { gt: now } },
+        data: { status: OfferStatus.ACCEPTED, respondedAt: now },
+      });
+      if (history.count !== 1) throw new Error("ACCEPTANCE_RACE");
+      return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) } as const;
+    });
+  } catch (error) {
+    if ((error instanceof Error && error.message === "ACCEPTANCE_RACE") || serializableConflict(error)) return conflict("Offer was accepted elsewhere");
+    throw error;
+  }
+}
+
+export async function declineTripOffer(db: Database, operatorId: string, tripId: string, now = new Date()) {
+  try {
+    return await runSerializable(db, async tx => {
+      const claimed = await tx.trip.updateMany({
+        where: { id: tripId, status: TripStatus.REQUESTED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now } },
+        data: { offeredOperatorId: null, offerExpiresAt: null },
+      });
+      if (claimed.count !== 1) return conflict("Offer is no longer available");
+      const history = await tx.tripOffer.updateMany({
+        where: { tripId, operatorId, status: OfferStatus.OFFERED, expiresAt: { gt: now } },
+        data: { status: OfferStatus.DECLINED, respondedAt: now },
+      });
+      if (history.count !== 1) throw new Error("DECLINE_HISTORY_MISMATCH");
+      await tx.user.updateMany({ where: { id: operatorId, pendingOfferTripId: tripId }, data: { pendingOfferTripId: null } });
+      await assignNextOperator(tx, tripId, now);
+      return { ok: true, value: { declined: true } } as const;
+    });
+  } catch (error) {
+    if ((error instanceof Error && error.message === "DECLINE_HISTORY_MISMATCH") || serializableConflict(error)) return conflict("Offer is no longer available");
+    throw error;
+  }
+}
+
+export type OperatorSettingsInput = {
+  operatingArea: string;
+  serviceRadiusKm: number;
+  supportsCustom: boolean;
+  languages: string[];
+  accessibilityCapabilities: string[];
+  durationOptions: number[];
+  destinationIds: string[];
+};
+
+export async function updateOperatorSettings(db: Database, operatorId: string, input: OperatorSettingsInput) {
+  try {
+    return await runSerializable(db, async tx => {
+      const { destinationIds, ...profileData } = input;
+      const validArea = await tx.destination.count({ where: { active: true, city: { equals: input.operatingArea, mode: "insensitive" } } });
+      const validDestinations = await tx.destination.count({ where: { id: { in: destinationIds }, active: true, custom: false, city: { equals: input.operatingArea, mode: "insensitive" } } });
+      if (!validArea || validDestinations !== destinationIds.length) return { ok: false, status: 400, error: "One or more destinations are unavailable" } as const;
+      const available = await tx.user.updateMany({
+        where: { id: operatorId, role: Role.OPERATOR, pendingOfferTripId: null, activeTripId: null },
+        data: { online: false },
+      });
+      if (available.count !== 1) return conflict("Service settings cannot change during an offer or active visit");
+      const profile = await tx.operatorProfile.upsert({
+        where: { userId: operatorId }, update: profileData, create: { userId: operatorId, ...profileData },
+      });
+      await tx.operatorDestination.deleteMany({ where: { operatorId } });
+      if (destinationIds.length) await tx.operatorDestination.createMany({ data: destinationIds.map(destinationId => ({ operatorId, destinationId })) });
+      return { ok: true, value: { profile, destinationIds } } as const;
+    });
+  } catch (error) {
+    if (serializableConflict(error)) return conflict("Service settings changed concurrently; try again");
+    throw error;
+  }
+}
+
+export async function cancelRequestedTrip(db: Database, viewerId: string, tripId: string, now = new Date()) {
+  try {
+    return await runSerializable(db, async tx => {
+      const trip = await tx.trip.findFirst({ where: { id: tripId, viewerId } });
+      if (!trip) return { ok: false, status: 404, error: "Not found" } as const;
+      if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip } as const;
+      if (trip.status !== TripStatus.REQUESTED) return conflict("Trip cannot be cancelled");
+      const changed = await tx.trip.updateMany({
+        where: { id: tripId, viewerId, status: TripStatus.REQUESTED, offeredOperatorId: trip.offeredOperatorId },
+        data: { status: TripStatus.CANCELLED, offeredOperatorId: null, offerExpiresAt: null },
+      });
+      if (changed.count !== 1) return conflict("Trip cannot be cancelled");
+      if (trip.offeredOperatorId) {
+        await tx.tripOffer.updateMany({ where: { tripId, operatorId: trip.offeredOperatorId, status: OfferStatus.OFFERED }, data: { status: OfferStatus.EXPIRED, respondedAt: now } });
+        await tx.user.updateMany({ where: { id: trip.offeredOperatorId, pendingOfferTripId: tripId }, data: { pendingOfferTripId: null } });
+      }
+      return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) } as const;
+    });
+  } catch (error) {
+    if (serializableConflict(error)) return conflict("Trip changed while cancellation was processed");
+    throw error;
+  }
+}
+
+export async function endAcceptedTrip(db: Database, actorId: string, actorRole: Role, tripId: string, now = new Date()) {
+  try {
+    return await runSerializable(db, async tx => {
+      const trip = await tx.trip.findUnique({ where: { id: tripId } });
+      const authorized = trip && ((actorRole === Role.VIEWER && trip.viewerId === actorId) || (actorRole === Role.OPERATOR && trip.operatorId === actorId));
+      if (!authorized) return { ok: false, status: 404, error: "Not found" } as const;
+      if (trip.status === TripStatus.ENDED) return { ok: true, value: trip } as const;
+      if (trip.status !== TripStatus.ACCEPTED) return conflict("Trip is not active");
+      const changed = await tx.trip.updateMany({ where: { id: tripId, status: TripStatus.ACCEPTED, operatorId: trip.operatorId }, data: { status: TripStatus.ENDED, endedAt: now } });
+      if (changed.count !== 1) return conflict("Trip is not active");
+      if (trip.operatorId) await tx.user.updateMany({ where: { id: trip.operatorId, activeTripId: tripId }, data: { activeTripId: null } });
+      return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) } as const;
+    });
+  } catch (error) {
+    if (serializableConflict(error)) return conflict("Trip changed while ending was processed");
+    throw error;
+  }
+}
+
+export async function getCurrentOffer(db: Database | Prisma.TransactionClient, operatorId: string, now = new Date()) {
+  return db.trip.findFirst({
+    where: { status: TripStatus.REQUESTED, offeredOperatorId: operatorId, offerExpiresAt: { gt: now }, offers: { some: { operatorId, status: OfferStatus.OFFERED } } },
+    orderBy: { requestedAt: "asc" },
+    select: { id: true, destination: true, meetingArea: true, requestedDuration: true, viewerNote: true, preferredLanguage: true, accessibilityNeeds: true, customDestination: true, immediate: true, offerExpiresAt: true },
+  });
+}
+
+export function validateCreateTripInput(body: Record<string, unknown>): ServiceResult<CreateTripInput> {
+  const destinationId = typeof body.destinationId === "string" ? body.destinationId : "";
+  const meetingArea = typeof body.meetingArea === "string" ? body.meetingArea.trim() : "";
+  const requestedDuration = Number(body.requestedDuration);
+  const viewerNote = typeof body.viewerNote === "string" ? body.viewerNote.trim() : "";
+  const preferredLanguage = typeof body.preferredLanguage === "string" ? body.preferredLanguage : "";
+  const accessibilityNeeds = normalizedList(body.accessibilityNeeds, ALLOWED_ACCESSIBILITY);
+  const customDestination = typeof body.customDestination === "string" ? body.customDestination.trim() : "";
+  if (!destinationId || meetingArea.length < 2 || meetingArea.length > 120 || !Number.isInteger(requestedDuration) || viewerNote.length > 240 || !accessibilityNeeds) return { ok: false, status: 400, error: "Check the visit request" };
+  if (preferredLanguage && !ALLOWED_LANGUAGES.includes(preferredLanguage as never)) return { ok: false, status: 400, error: "Choose an available language" };
+  return { ok: true, value: { destinationId, meetingArea, requestedDuration, viewerNote, preferredLanguage, accessibilityNeeds, customDestination } };
+}
+
+export function validateSettingsInput(body: Record<string, unknown>): ServiceResult<OperatorSettingsInput> {
+  const operatingArea = typeof body.operatingArea === "string" ? body.operatingArea.trim() : "";
+  const serviceRadiusKm = Number(body.serviceRadiusKm);
+  const languages = normalizedList(body.languages, ALLOWED_LANGUAGES);
+  const accessibilityCapabilities = normalizedList(body.accessibilityCapabilities, ALLOWED_ACCESSIBILITY);
+  const durationOptions = Array.isArray(body.durationOptions) ? [...new Set(body.durationOptions.map(Number))] : null;
+  const destinationIds = Array.isArray(body.destinationIds) ? [...new Set(body.destinationIds.filter((id): id is string => typeof id === "string"))] : null;
+  const supportsCustom = body.supportsCustom === true;
+  if (operatingArea.length < 2 || operatingArea.length > 80 || !Number.isFinite(serviceRadiusKm) || serviceRadiusKm < 1 || serviceRadiusKm > 100 || !languages?.length || !accessibilityCapabilities || !durationOptions?.length || durationOptions.some(value => !ALLOWED_DURATIONS.includes(value as never)) || !destinationIds || destinationIds.length > 20 || (!destinationIds.length && !supportsCustom)) return { ok: false, status: 400, error: "Check the required service settings" };
+  return { ok: true, value: { operatingArea, serviceRadiusKm, supportsCustom, languages, accessibilityCapabilities, durationOptions, destinationIds } };
+}
