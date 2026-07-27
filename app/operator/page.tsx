@@ -17,7 +17,11 @@ export default function OperatorPage() {
     token: string;
     url: string;
   } | null>(null);
+  const [tripEnded, setTripEnded] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const endingRef = useRef(false);
+  const endRequestRef = useRef(false);
+  const teardownRef = useRef(false);
 
   async function toggleOnline() {
     const next = !online;
@@ -39,6 +43,10 @@ export default function OperatorPage() {
     }
     const data = await res.json();
     setActiveTrip(data.trip);
+    endingRef.current = false;
+    endRequestRef.current = false;
+    teardownRef.current = false;
+    setTripEnded(false);
 
     const tokenRes = await fetch("/api/livekit-token", {
       method: "POST",
@@ -50,8 +58,18 @@ export default function OperatorPage() {
   }
 
   async function endTrip() {
-    if (!activeTrip) return;
+    if (!activeTrip || endRequestRef.current) return;
+
+    endRequestRef.current = true;
     await fetch(`/api/trips/${activeTrip.id}/end`, { method: "POST" });
+    clearActiveCall();
+  }
+
+  function clearActiveCall() {
+    if (teardownRef.current) return;
+
+    teardownRef.current = true;
+    setTripEnded(false);
     setActiveTrip(null);
     setVideoToken(null);
   }
@@ -73,11 +91,63 @@ export default function OperatorPage() {
     };
   }, [online, activeTrip]);
 
+  const activeTripId = activeTrip?.id;
+
+  useEffect(() => {
+    if (!activeTripId) return;
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let request: AbortController | undefined;
+
+    async function poll() {
+      request = new AbortController();
+
+      try {
+        const res = await fetch(`/api/trips/${activeTripId}`, {
+          cache: "no-store",
+          signal: request.signal,
+        });
+        const data = await res.json();
+
+        if (
+          !stopped &&
+          res.ok &&
+          data.trip &&
+          data.trip?.status !== "ACCEPTED" &&
+          !endingRef.current
+        ) {
+          endingRef.current = true;
+          setTripEnded(true);
+          return;
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          console.error("Unable to refresh trip status");
+        }
+      }
+
+      if (!stopped) timer = setTimeout(poll, 1000);
+    }
+
+    void poll();
+
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      request?.abort();
+    };
+  }, [activeTripId]);
+
   if (activeTrip && videoToken) {
     return (
       <VideoRoom
         token={videoToken.token}
         serverUrl={videoToken.url}
+        canPublishCamera
+        canPublishMicrophone
+        disconnect={tripEnded}
+        onAuthoritativeDisconnect={clearActiveCall}
         onDisconnected={endTrip}
       />
     );

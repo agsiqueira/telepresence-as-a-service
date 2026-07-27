@@ -1,4 +1,4 @@
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, type TrackSource } from "livekit-server-sdk";
 
 const apiKey = process.env.LIVEKIT_API_KEY!;
 const apiSecret = process.env.LIVEKIT_API_SECRET!;
@@ -7,7 +7,7 @@ export async function mintLiveKitToken(opts: {
   room: string;
   identity: string;
   name?: string;
-  canPublish: boolean;
+  canPublishSources: TrackSource[];
 }) {
   const token = new AccessToken(apiKey, apiSecret, {
     identity: opts.identity,
@@ -17,7 +17,8 @@ export async function mintLiveKitToken(opts: {
   token.addGrant({
     room: opts.room,
     roomJoin: true,
-    canPublish: opts.canPublish,
+    canPublish: opts.canPublishSources.length > 0,
+    canPublishSources: opts.canPublishSources,
     canSubscribe: true,
     canPublishData: true,
   });

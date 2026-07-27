@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role, TripStatus } from "@prisma/client";
+import { TrackSource } from "livekit-server-sdk";
 import { db } from "@/lib/db";
 import { requireCurrentUser } from "@/lib/current-user";
 import { mintLiveKitToken } from "@/lib/livekit";
@@ -26,13 +27,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Trip is not active" }, { status: 409 });
   }
 
-  const canPublish = isOperator;
+  const canPublishSources = isOperator
+    ? [TrackSource.CAMERA, TrackSource.MICROPHONE]
+    : [TrackSource.MICROPHONE];
 
   const token = await mintLiveKitToken({
     room: trip.livekitRoom,
     identity: user.id,
     name: user.name ?? undefined,
-    canPublish,
+    canPublishSources,
   });
 
   return NextResponse.json({

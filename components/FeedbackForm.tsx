@@ -12,16 +12,29 @@ export default function FeedbackForm({
   const [presence, setPresence] = useState(3);
   const [mediaQuality, setMediaQuality] = useState(3);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit() {
     setSubmitting(true);
-    await fetch("/api/feedback", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tripId, presence, mediaQuality }),
-    });
-    setSubmitting(false);
-    onDone();
+    setError(null);
+
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripId, presence, mediaQuality }),
+      });
+
+      if (response.ok) {
+        onDone();
+      } else {
+        setError("Unable to submit feedback. Please try again or skip.");
+      }
+    } catch {
+      setError("Unable to submit feedback. Please try again or skip.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const scale = [1, 2, 3, 4, 5];
@@ -86,6 +99,7 @@ export default function FeedbackForm({
           Skip
         </button>
       </div>
+      {error && <p className="text-red-600 text-sm mt-4">{error}</p>}
     </div>
   );
 }

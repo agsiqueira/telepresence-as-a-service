@@ -10,7 +10,7 @@ type Trip = {
   status: "REQUESTED" | "ACCEPTED" | "ENDED" | "CANCELLED";
 };
 
-type Phase = "form" | "waiting" | "call" | "feedback" | "done";
+type Phase = "form" | "waiting" | "call" | "feedback";
 
 export default function ViewerPage() {
   const [destination, setDestination] = useState("");
@@ -20,7 +20,11 @@ export default function ViewerPage() {
     token: string;
     url: string;
   } | null>(null);
+  const [tripEnded, setTripEnded] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const endingRef = useRef(false);
+  const feedbackTransitionRef = useRef(false);
+  const leaveRequestRef = useRef(false);
   const tripId = trip?.id;
 
   async function requestTrip() {
@@ -58,9 +62,40 @@ export default function ViewerPage() {
   }
 
   async function leaveCall() {
-    if (!trip) return;
-    await fetch(`/api/trips/${trip.id}/end`, { method: "POST" });
+    if (!trip || leaveRequestRef.current) return;
+
+    leaveRequestRef.current = true;
+    const response = await fetch(`/api/trips/${trip.id}/end`, {
+      method: "POST",
+    });
+
+    if (response.ok || response.status === 409) {
+      endingRef.current = true;
+      setTripEnded(true);
+    } else {
+      leaveRequestRef.current = false;
+      console.error("Unable to end trip");
+    }
+  }
+
+  function transitionToFeedback() {
+    if (feedbackTransitionRef.current) return;
+
+    feedbackTransitionRef.current = true;
+    setTripEnded(false);
+    setVideoToken(null);
     setPhase("feedback");
+  }
+
+  function resetViewerDashboard() {
+    setDestination("");
+    setTrip(null);
+    setVideoToken(null);
+    setTripEnded(false);
+    endingRef.current = false;
+    feedbackTransitionRef.current = false;
+    leaveRequestRef.current = false;
+    setPhase("form");
   }
 
   useEffect(() => {
@@ -80,6 +115,9 @@ export default function ViewerPage() {
         });
         const tokenData = await tokenRes.json();
         setVideoToken({ token: tokenData.token, url: tokenData.url });
+        endingRef.current = false;
+        feedbackTransitionRef.current = false;
+        leaveRequestRef.current = false;
         setPhase("call");
       } else if (data.trip.status === "CANCELLED") {
         setPhase("form");
@@ -88,6 +126,51 @@ export default function ViewerPage() {
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [phase, tripId]);
+
+  useEffect(() => {
+    if (phase !== "call" || !tripId) return;
+
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let request: AbortController | undefined;
+
+    async function poll() {
+      request = new AbortController();
+
+      try {
+        const res = await fetch(`/api/trips/${tripId}`, {
+          cache: "no-store",
+          signal: request.signal,
+        });
+        const data = await res.json();
+
+        if (
+          !stopped &&
+          data.trip?.status === "ENDED" &&
+          !endingRef.current
+        ) {
+          endingRef.current = true;
+          setTrip(data.trip);
+          setTripEnded(true);
+          return;
+        }
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          console.error("Unable to refresh trip status");
+        }
+      }
+
+      if (!stopped) timer = setTimeout(poll, 1000);
+    }
+
+    void poll();
+
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      request?.abort();
     };
   }, [phase, tripId]);
 
@@ -135,18 +218,19 @@ export default function ViewerPage() {
       <VideoRoom
         token={videoToken.token}
         serverUrl={videoToken.url}
-        onDisconnected={leaveCall}
+        canPublishCamera={false}
+        canPublishMicrophone
+        viewerLayout
+        disconnect={tripEnded}
+        onLeave={leaveCall}
+        onAuthoritativeDisconnect={transitionToFeedback}
       />
     );
   }
 
   if (phase === "feedback" && trip) {
-    return <FeedbackForm tripId={trip.id} onDone={() => setPhase("done")} />;
+    return <FeedbackForm tripId={trip.id} onDone={resetViewerDashboard} />;
   }
 
-  return (
-    <div className="max-w-md mx-auto px-4 py-16 text-center text-gray-500">
-      Thanks for using VirtualTrip.
-    </div>
-  );
+  return null;
 }
