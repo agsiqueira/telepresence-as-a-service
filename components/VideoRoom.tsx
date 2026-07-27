@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Chat,
+  ChatEntry,
   ChatToggle,
   GridLayout,
   LayoutContextProvider,
@@ -11,15 +11,111 @@ import {
   RoomAudioRenderer,
   TrackToggle,
   useConnectionState,
+  useChat,
   useCreateLayoutContext,
   useRemoteParticipants,
   useRoomContext,
   useTracks,
 } from "@livekit/components-react";
+import type { ReceivedChatMessage } from "@livekit/components-react";
 import { ConnectionState, Track } from "livekit-client";
 import "@livekit/components-styles";
 
 type VisitRole = "viewer" | "operator";
+
+function VisitChatToggle({ unreadCount }: { unreadCount: number }) {
+  const unreadLabel = unreadCount === 1 ? "1 unread message" : `${unreadCount} unread messages`;
+
+  return (
+    <ChatToggle
+      aria-label={unreadCount > 0 ? `Open chat, ${unreadLabel}` : "Open or close chat"}
+      className="relative min-h-11 min-w-0 overflow-hidden whitespace-nowrap rounded-xl px-2 text-xs focus-visible:ring-2 focus-visible:ring-white"
+    >
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-5 w-5 shrink-0 fill-none stroke-current"
+      >
+        <path
+          d="M5 5h14v10H9l-4 4V5Z"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="max-[340px]:sr-only">Chat</span>
+      {unreadCount > 0 && (
+        <span
+          className="absolute right-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[0.65rem] font-bold leading-none text-white"
+          aria-hidden="true"
+        >
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
+    </ChatToggle>
+  );
+}
+
+function VisitChat({
+  messages,
+  send,
+  isSending,
+}: {
+  messages: ReceivedChatMessage[];
+  send: (message: string) => Promise<unknown>;
+  isSending: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+  }, [messages]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (!message || isSending) return;
+
+    setDraft("");
+    await send(message);
+  }
+
+  return (
+    <section
+      className="fixed inset-x-0 bottom-0 z-40 grid max-h-[70dvh] grid-rows-[auto_1fr_auto] border-t border-white/10 bg-[#181818] sm:inset-y-0 sm:left-auto sm:w-96 sm:max-h-none sm:border-l sm:border-t-0"
+      aria-label="Visit chat"
+    >
+      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <h2 className="font-semibold">Messages</h2>
+        <ChatToggle className="min-h-11 rounded-full px-4 focus-visible:ring-2 focus-visible:ring-white">
+          Close
+        </ChatToggle>
+      </div>
+      <ul ref={listRef} className="lk-list lk-chat-messages min-h-0 overflow-y-auto">
+        {messages.map((message, index) => (
+          <ChatEntry key={message.id ?? `${message.timestamp}-${index}`} entry={message} />
+        ))}
+      </ul>
+      <form className="flex gap-2 border-t border-white/10 p-3" onSubmit={submit}>
+        <input
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/20 bg-black px-3 text-white"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Enter a message…"
+          aria-label="Chat message"
+          disabled={isSending}
+        />
+        <button
+          type="submit"
+          className="min-h-11 rounded-lg bg-white px-4 font-semibold text-black focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-50"
+          disabled={isSending || !draft.trim()}
+        >
+          Send
+        </button>
+      </form>
+    </section>
+  );
+}
 
 function formatElapsed(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
@@ -219,7 +315,11 @@ function ActiveVisitConference({
   visitEnded: boolean;
 }) {
   const [showChat, setShowChat] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [chatAnnouncement, setChatAnnouncement] = useState("");
+  const previousMessageCountRef = useRef(0);
   const layoutContext = useCreateLayoutContext();
+  const { chatMessages, send, isSending } = useChat();
   const connectionState = useConnectionState();
   const remoteParticipants = useRemoteParticipants();
   const allCameraTracks = useTracks([Track.Source.Camera], {
@@ -241,6 +341,37 @@ function ActiveVisitConference({
       ? "Waiting for viewer audio"
       : undefined;
 
+  useEffect(() => {
+    const previousCount = previousMessageCountRef.current;
+
+    if (chatMessages.length < previousCount) {
+      previousMessageCountRef.current = chatMessages.length;
+      return;
+    }
+
+    const incomingMessages = chatMessages
+      .slice(previousCount)
+      .filter((message) => !message.from?.isLocal);
+
+    previousMessageCountRef.current = chatMessages.length;
+
+    if (!showChat && incomingMessages.length > 0) {
+      setUnreadCount((count) => count + incomingMessages.length);
+      setChatAnnouncement(
+        incomingMessages.length === 1
+          ? "New chat message received"
+          : `${incomingMessages.length} new chat messages received`
+      );
+    }
+  }, [chatMessages, showChat]);
+
+  useEffect(() => {
+    if (showChat) {
+      setUnreadCount(0);
+      setChatAnnouncement("");
+    }
+  }, [showChat]);
+
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#101010] text-white">
       <VisitHeader
@@ -254,8 +385,8 @@ function ActiveVisitConference({
         value={layoutContext}
         onWidgetChange={(state) => setShowChat(state.showChat)}
       >
-        <div className="relative min-h-0 flex-1 sm:grid sm:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="relative h-full min-h-0 bg-black">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden sm:grid sm:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="relative min-h-0 flex-1 bg-black sm:h-full">
             <GridLayout tracks={cameraTracks} className="h-full">
               <ParticipantTile />
             </GridLayout>
@@ -279,7 +410,7 @@ function ActiveVisitConference({
             )}
           </div>
 
-          <aside className="border-t border-white/10 bg-[#181818] p-4 sm:border-l sm:border-t-0 sm:p-5">
+          <aside className="shrink-0 border-t border-white/10 bg-[#181818] p-4 sm:border-l sm:border-t-0 sm:p-5">
             <ParticipantIdentity
               name={participantName}
               designation={role === "viewer" ? "Operator" : "Viewer"}
@@ -293,41 +424,57 @@ function ActiveVisitConference({
           </aside>
         </div>
 
-        <div className="flex shrink-0 items-center justify-center gap-2 border-t border-white/10 bg-[#181818] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:gap-3">
-          <TrackToggle
-            source={Track.Source.Microphone}
-            className="min-h-12 min-w-12 rounded-full focus-visible:ring-2 focus-visible:ring-white"
-          >
-            Microphone
-          </TrackToggle>
-          {role === "operator" && (
-            <TrackToggle
-              source={Track.Source.Camera}
-              className="min-h-12 min-w-12 rounded-full focus-visible:ring-2 focus-visible:ring-white"
-            >
-              Camera
-            </TrackToggle>
+        <div className="w-full shrink-0 overflow-x-hidden border-t border-white/10 bg-[#181818] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+          {role === "operator" ? (
+            <div className="mx-auto grid w-full min-w-0 max-w-lg grid-cols-3 gap-2">
+              <TrackToggle
+                source={Track.Source.Microphone}
+                aria-label="Mute or unmute microphone"
+                className="min-h-11 min-w-0 overflow-hidden whitespace-nowrap rounded-xl px-2 text-xs focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <span className="max-[340px]:sr-only">Mic</span>
+              </TrackToggle>
+              <TrackToggle
+                source={Track.Source.Camera}
+                aria-label="Turn camera on or off"
+                className="min-h-11 min-w-0 overflow-hidden whitespace-nowrap rounded-xl px-2 text-xs focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <span className="max-[340px]:sr-only">Camera</span>
+              </TrackToggle>
+              <VisitChatToggle unreadCount={unreadCount} />
+              <div className="col-span-3 mt-1 min-w-0 [&>button]:w-full">
+                <ConfirmVisitAction
+                  label="End visit"
+                  title="End this visit?"
+                  description="The viewer will be disconnected and invited to share feedback."
+                  onConfirm={onEnd}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="mx-auto flex w-full min-w-0 max-w-lg items-center justify-center gap-2 sm:gap-3">
+              <TrackToggle
+                source={Track.Source.Microphone}
+                className="min-h-12 min-w-12 rounded-full focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Microphone
+              </TrackToggle>
+              <VisitChatToggle unreadCount={unreadCount} />
+              <ConfirmVisitAction
+                label="Leave visit"
+                title="Leave this visit?"
+                description="The operator will be disconnected and you’ll continue to feedback."
+                onConfirm={onEnd}
+              />
+            </div>
           )}
-          <ChatToggle className="min-h-12 min-w-12 rounded-full focus-visible:ring-2 focus-visible:ring-white">
-            Chat
-          </ChatToggle>
-          <ConfirmVisitAction
-            label={role === "viewer" ? "Leave visit" : "End visit"}
-            title={role === "viewer" ? "Leave this visit?" : "End this visit?"}
-            description={
-              role === "viewer"
-                ? "The operator will be disconnected and you’ll continue to feedback."
-                : "The viewer will be disconnected and invited to share feedback."
-            }
-            onConfirm={onEnd}
-          />
         </div>
 
-        <Chat
-          className="fixed inset-x-0 bottom-0 z-40 max-h-[70dvh] border-t border-white/10 bg-[#181818] sm:inset-y-0 sm:left-auto sm:w-96 sm:max-h-none sm:border-l sm:border-t-0"
-          style={{ display: showChat ? "grid" : "none" }}
-        />
+        {showChat && <VisitChat messages={chatMessages} send={send} isSending={isSending} />}
       </LayoutContextProvider>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {chatAnnouncement}
+      </p>
       <RoomAudioRenderer />
     </div>
   );
