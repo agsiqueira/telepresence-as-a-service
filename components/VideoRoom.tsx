@@ -18,7 +18,14 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import type { ReceivedChatMessage } from "@livekit/components-react";
-import { ConnectionState, Track } from "livekit-client";
+import {
+  inferCurrentFacing,
+  replacePublishedCameraSource,
+  runExclusiveCameraSwitch,
+  shouldOfferCameraSwitch,
+  type CameraFacing,
+} from "@/lib/camera-switch";
+import { ConnectionState, LocalVideoTrack, Track } from "livekit-client";
 import "@livekit/components-styles";
 
 type VisitRole = "viewer" | "operator";
@@ -306,6 +313,131 @@ function VisitHeader({
   );
 }
 
+function cameraSwitchMessage(error: unknown) {
+  const detail = error instanceof Error ? `${error.name} ${error.message}`.toLowerCase() : "";
+  if (detail.includes("notallowed") || detail.includes("permission") || detail.includes("denied")) {
+    return "Camera access was not allowed. Your current camera will remain in use.";
+  }
+  if (detail.includes("notfound") || detail.includes("overconstrained")) {
+    return "The other camera is unavailable. Your current camera will remain in use.";
+  }
+  return "Unable to switch cameras. Your current camera will remain in use.";
+}
+
+function OperatorCameraSwitch({ cameraTrack }: { cameraTrack?: LocalVideoTrack }) {
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [hasFrontRearCapabilities, setHasFrontRearCapabilities] = useState(false);
+  const [mobileMediaEnvironment, setMobileMediaEnvironment] = useState(false);
+  const [currentFacing, setCurrentFacing] = useState<CameraFacing>("user");
+  const [switching, setSwitching] = useState(false);
+  const [error, setError] = useState("");
+  const switchingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const mediaDevices = navigator.mediaDevices;
+    setMobileMediaEnvironment(
+      navigator.maxTouchPoints > 0 && window.matchMedia?.("(pointer: coarse)").matches === true
+    );
+    setCurrentFacing(inferCurrentFacing(cameraTrack?.getSourceTrackSettings() ?? {}, "user"));
+    if (!mediaDevices?.enumerateDevices) return;
+
+    const refreshDevices = async () => {
+      try {
+        const devices = await mediaDevices.enumerateDevices();
+        if (!mountedRef.current) return;
+        setVideoDevices(devices.filter((device) => device.kind === "videoinput"));
+
+        const capabilities = cameraTrack?.mediaStreamTrack.getCapabilities?.();
+        const facingModes = capabilities?.facingMode ?? [];
+        setHasFrontRearCapabilities(
+          facingModes.includes("user") && facingModes.includes("environment")
+        );
+      } catch {
+        if (mountedRef.current) {
+          setVideoDevices([]);
+          setHasFrontRearCapabilities(false);
+        }
+      }
+    };
+
+    void refreshDevices();
+    const delayedRefreshes = [500, 1500].map((delay) =>
+      window.setTimeout(() => void refreshDevices(), delay)
+    );
+    mediaDevices.addEventListener?.("devicechange", refreshDevices);
+    return () => {
+      delayedRefreshes.forEach((timer) => window.clearTimeout(timer));
+      mediaDevices.removeEventListener?.("devicechange", refreshDevices);
+    };
+  }, [cameraTrack]);
+
+  const hasMediaConstraintSupport = Boolean(navigator.mediaDevices?.getUserMedia);
+  const canAttemptSwitch = shouldOfferCameraSwitch({
+    hasActiveTrack: Boolean(cameraTrack),
+    hasGetUserMedia: hasMediaConstraintSupport,
+    videoInputCount: videoDevices.length,
+    hasFrontRearCapabilities,
+    mobileMediaEnvironment,
+  });
+
+  if (!cameraTrack || !canAttemptSwitch) return null;
+
+  async function switchCamera() {
+    if (!cameraTrack) return;
+    await runExclusiveCameraSwitch({
+      operationLock: switchingRef,
+      mounted: mountedRef,
+      setBusy: setSwitching,
+      operation: async () => {
+        if (mountedRef.current) setError("");
+        try {
+          const selectedFacing = await replacePublishedCameraSource({
+            cameraTrack,
+            videoDevices,
+            currentFacing,
+          });
+          if (mountedRef.current) setCurrentFacing(selectedFacing);
+        } catch (switchError) {
+          if (mountedRef.current) setError(cameraSwitchMessage(switchError));
+        }
+      },
+    });
+  }
+
+  return (
+    <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+      <button
+        type="button"
+        className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full bg-black/75 px-3 text-sm font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-60"
+        onClick={() => void switchCamera()}
+        disabled={switching}
+        aria-label={switching ? "Switching camera" : "Switch front or rear camera"}
+        aria-busy={switching}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current">
+          <path d="M8 7h8l2 3h2v8H4v-8h2l2-3Z" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M9 13a3 3 0 1 0 6 0" strokeWidth="1.8" />
+          <path d="m8 3-2 2 2 2M16 3l2 2-2 2" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="max-[360px]:sr-only">{switching ? "Switching…" : "Switch camera"}</span>
+      </button>
+      {error && (
+        <p className="max-w-64 rounded-lg bg-red-950/95 px-3 py-2 text-xs text-white" role="status">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ActiveVisitConference({
   role,
   destination,
@@ -396,6 +528,9 @@ function ActiveVisitConference({
       >
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden sm:grid sm:grid-cols-[minmax(0,1fr)_20rem]">
           <div className="relative min-h-0 flex-1 bg-black sm:h-full">
+            {role === "operator" && (
+              <OperatorCameraSwitch cameraTrack={cameraTracks[0]?.publication.track as LocalVideoTrack | undefined} />
+            )}
             <GridLayout tracks={cameraTracks} className="h-full">
               <ParticipantTile />
             </GridLayout>
