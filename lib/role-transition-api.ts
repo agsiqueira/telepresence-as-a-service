@@ -37,6 +37,7 @@ const publicFailures: Record<
   TARGET_NOT_FOUND: { status: 404, message: "Participant not found" },
   INVALID_CURRENT_ROLE: { status: 409, message: "Participant role has changed" },
   UNFINISHED_VIEWER_OBLIGATION: { status: 409, message: "Participant has unfinished Viewer activity" },
+  PENDING_OPERATOR_APPLICATION_EXISTS: { status: 409, message: "Review the pending Operator application before changing this participant's role" },
   ACTIVE_OPERATOR_OBLIGATION: { status: 409, message: "Participant has active Operator activity" },
   SERIALIZATION_RETRY_EXHAUSTED: { status: 503, message: "Role change is temporarily unavailable" },
   INTERNAL_INVARIANT_FAILURE: { status: 500, message: "Role change could not be completed" },

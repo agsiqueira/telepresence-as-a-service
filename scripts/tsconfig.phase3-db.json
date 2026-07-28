@@ -21,6 +21,12 @@
     "phase5c-schema-control.ts",
     "phase5c-incremental-fixture.ts",
     "phase5c-incremental-verify.ts",
+    "phase5d-db-integration.ts",
+    "phase5d-service-db-integration.ts",
+    "phase5d-db-preflight.ts",
+    "phase5d-schema-control.ts",
+    "phase5d-incremental-fixture.ts",
+    "phase5d-incremental-verify.ts",
     "../lib/marketplace.ts",
     "../lib/phase3-services.ts",
     "../lib/trip-lifecycle.ts",
@@ -29,6 +35,11 @@
     "../lib/profiles.ts",
     "../lib/admin.ts",
     "../lib/role-transitions.ts",
+    "../lib/operator-applications.ts",
+    "../lib/operator-application-api.ts",
+    "../lib/operator-application-ui.ts",
+    "../lib/admin-operator-application-ui.ts",
+    "../lib/marketplace-vocabulary.ts",
     "../lib/role-transition-api.ts",
     "../lib/admin-role-ui.ts",
     "../app/api/destinations/route.ts",
@@ -41,5 +52,10 @@
     ,"../app/api/trips/history/route.ts"
     ,"../app/api/trips/[id]/retry/route.ts"
     ,"../app/api/feedback/skip/route.ts"
+    ,"../app/api/operator-applications/route.ts"
+    ,"../app/api/operator-applications/[id]/withdraw/route.ts"
+    ,"../app/api/admin/operator-applications/route.ts"
+    ,"../app/api/admin/operator-applications/[id]/route.ts"
+    ,"../app/api/admin/operator-applications/[id]/review/route.ts"
   ]
 }

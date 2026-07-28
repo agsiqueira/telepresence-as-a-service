@@ -27,6 +27,7 @@ function baseState(targetRole = Role.VIEWER) {
     destinations: [],
     trips: [],
     offers: [],
+    applications: [],
     audits: [],
     tripWrites: 0,
   };
@@ -76,6 +77,9 @@ function mockDatabase(initial, options = {}) {
         },
         tripOffer: {
           count: async ({ where }) => draft.offers.filter(offer => offer.operatorId === where.operatorId && offer.status === where.status).length,
+        },
+        operatorApplication: {
+          count: async ({ where }) => draft.applications.filter(application => application.applicantId === where.applicantId && application.status === where.status).length,
         },
         operatorProfile: {
           create: async ({ data }) => {

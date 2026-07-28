@@ -24,6 +24,13 @@ enum AdminRoleChangeAction {
   RETURN_TO_VIEWER
 }
 
+enum OperatorApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
 enum TripStatus {
   REQUESTED
   OFFERED
@@ -64,9 +71,35 @@ model User {
   offeredTrips         Trip[]                 @relation("OfferedOperator")
   roleChangesPerformed AdminRoleChangeAudit[] @relation("AdminRoleChangeActor")
   roleChangesReceived  AdminRoleChangeAudit[] @relation("AdminRoleChangeTarget")
+  operatorApplications OperatorApplication[]  @relation("OperatorApplicationApplicant")
+  applicationsReviewed OperatorApplication[]  @relation("OperatorApplicationReviewer")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
+}
+
+model OperatorApplication {
+  id                 String                    @id @default(cuid())
+  applicant          User                      @relation("OperatorApplicationApplicant", fields: [applicantId], references: [id], onDelete: Restrict)
+  applicantId        String
+  qualifications     String
+  relevantExperience String
+  languages          String[]
+  availability       String
+  supportingUrl      String?
+  additionalNote     String?
+  status             OperatorApplicationStatus @default(PENDING)
+  reviewer           User?                     @relation("OperatorApplicationReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedById       String?
+  reviewNote         String?
+  submittedAt        DateTime                  @default(now())
+  reviewedAt         DateTime?
+  withdrawnAt        DateTime?
+  updatedAt          DateTime                  @updatedAt
+
+  @@index([applicantId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([reviewedById, reviewedAt])
 }
 
 model AdminRoleChangeAudit {

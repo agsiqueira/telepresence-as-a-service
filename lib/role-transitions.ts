@@ -21,6 +21,7 @@ export type RoleTransitionFailureCode =
   | "SELF_TRANSITION_FORBIDDEN"
   | "INVALID_CURRENT_ROLE"
   | "UNFINISHED_VIEWER_OBLIGATION"
+  | "PENDING_OPERATOR_APPLICATION_EXISTS"
   | "ACTIVE_OPERATOR_OBLIGATION"
   | "SERIALIZATION_RETRY_EXHAUSTED"
   | "INTERNAL_INVARIANT_FAILURE";
@@ -46,7 +47,7 @@ export type RoleTransitionResult = RoleTransitionSuccess | RoleTransitionFailure
 
 type Database = Pick<PrismaClient, "$transaction">;
 
-class TransitionAbort extends Error {
+export class RoleTransitionAbort extends Error {
   constructor(readonly failure: RoleTransitionFailure) {
     super(failure.code);
   }
@@ -59,7 +60,7 @@ const failure = (
 ): RoleTransitionFailure => ({ ok: false, code, status, error });
 
 function abort(code: RoleTransitionFailureCode, status: RoleTransitionFailure["status"], error: string): never {
-  throw new TransitionAbort(failure(code, status, error));
+  throw new RoleTransitionAbort(failure(code, status, error));
 }
 
 function isSerializableConflict(error: unknown) {
@@ -78,7 +79,7 @@ async function runRoleTransition(
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
       });
     } catch (error) {
-      if (error instanceof TransitionAbort) return error.failure;
+      if (error instanceof RoleTransitionAbort) return error.failure;
       if (isSerializableConflict(error)) {
         if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
         return failure(
@@ -116,7 +117,17 @@ export async function assignViewerAsOperator(
   actorId: string | null | undefined,
   targetId: string
 ): Promise<RoleTransitionResult> {
-  return runRoleTransition(db, "assign-operator", targetId, async tx => {
+  return runRoleTransition(db, "assign-operator", targetId, tx =>
+    assignViewerAsOperatorInTransaction(tx, actorId, targetId)
+  );
+}
+
+export async function assignViewerAsOperatorInTransaction(
+  tx: Prisma.TransactionClient,
+  actorId: string | null | undefined,
+  targetId: string,
+  options: { allowPendingOperatorApplication?: boolean; forcePendingPilotStatus?: boolean } = {}
+): Promise<RoleTransitionSuccess> {
     const actor = await authorizeActor(tx, actorId, targetId);
     const target = await tx.user.findUnique({
       where: { id: targetId },
@@ -130,6 +141,19 @@ export async function assignViewerAsOperator(
     });
     if (!target) abort("TARGET_NOT_FOUND", 404, "Participant not found");
     if (target.role !== Role.VIEWER) abort("INVALID_CURRENT_ROLE", 409, "Participant is not a Viewer");
+
+    if (!options.allowPendingOperatorApplication) {
+      const pendingApplication = await tx.operatorApplication.count({
+        where: { applicantId: target.id, status: "PENDING" },
+      });
+      if (pendingApplication) {
+        abort(
+          "PENDING_OPERATOR_APPLICATION_EXISTS",
+          409,
+          "Review the pending Operator application before changing this participant's role"
+        );
+      }
+    }
 
     const unfinishedViewerTrips = await tx.trip.count({
       where: {
@@ -167,7 +191,7 @@ export async function assignViewerAsOperator(
     }
 
     const pilotStatus =
-      target.operatorProfile?.pilotStatus === OperatorPilotStatus.SUSPENDED
+      !options.forcePendingPilotStatus && target.operatorProfile?.pilotStatus === OperatorPilotStatus.SUSPENDED
         ? OperatorPilotStatus.SUSPENDED
         : OperatorPilotStatus.PENDING;
     if (target.operatorProfile) {
@@ -209,7 +233,6 @@ export async function assignViewerAsOperator(
         auditId: audit.id,
       },
     };
-  });
 }
 
 export async function returnOperatorToViewer(

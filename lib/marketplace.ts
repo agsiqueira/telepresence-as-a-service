@@ -10,17 +10,10 @@ import {
   type OperatorProfile,
   type User,
 } from "@prisma/client";
+export { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES } from "./marketplace-vocabulary";
+import { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES } from "./marketplace-vocabulary";
 
 export const OFFER_TIMEOUT_SECONDS = 30;
-export const ALLOWED_DURATIONS = [15, 30, 45, 60] as const;
-export const ALLOWED_LANGUAGES = ["English", "Spanish", "French", "Portuguese"] as const;
-export const ALLOWED_ACCESSIBILITY = [
-  "Wheelchair-accessible route support",
-  "Low-noise environment preference",
-  "Visual-description assistance",
-  "Slower-paced visit",
-  "Other",
-] as const;
 
 export function normalizedList(value: unknown, allowed: readonly string[], max = 8) {
   if (!Array.isArray(value)) return null;
