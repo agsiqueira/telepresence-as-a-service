@@ -72,6 +72,8 @@ assert.match(ui, /querySelectorAll<HTMLElement>/);
 assert.match(ui, /cycleDialogFocus/);
 assert.match(ui, /aria-modal="true"/);
 assert.match(ui, /disabled=\{Boolean\(pendingReference\)\}/);
+assert.match(ui, /role="alert">\{message\}/);
+assert.match(ui, /if \(outcome\.kind === "success"\) setConfirm\(null\)/);
 assert.doesNotMatch(ui, /setParticipants\([^)]*(?:role|newRole)/);
 
 rmSync(".phase3-test-build", { recursive: true, force: true });

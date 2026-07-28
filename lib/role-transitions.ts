@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
+type RoleTransitionOperation = "assign-operator" | "return-to-viewer";
 
 export type RoleTransitionFailureCode =
   | "UNAUTHORIZED"
@@ -67,6 +68,8 @@ function isSerializableConflict(error: unknown) {
 
 async function runRoleTransition(
   db: Database,
+  operation: RoleTransitionOperation,
+  targetId: string,
   work: (tx: Prisma.TransactionClient) => Promise<RoleTransitionSuccess>
 ): Promise<RoleTransitionResult> {
   for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
@@ -84,6 +87,7 @@ async function runRoleTransition(
           "Participant state changed concurrently; try again"
         );
       }
+      console.error("Unexpected role transition failure", { operation, targetId }, error);
       return failure(
         "INTERNAL_INVARIANT_FAILURE",
         500,
@@ -112,7 +116,7 @@ export async function assignViewerAsOperator(
   actorId: string | null | undefined,
   targetId: string
 ): Promise<RoleTransitionResult> {
-  return runRoleTransition(db, async tx => {
+  return runRoleTransition(db, "assign-operator", targetId, async tx => {
     const actor = await authorizeActor(tx, actorId, targetId);
     const target = await tx.user.findUnique({
       where: { id: targetId },
@@ -213,7 +217,7 @@ export async function returnOperatorToViewer(
   actorId: string | null | undefined,
   targetId: string
 ): Promise<RoleTransitionResult> {
-  return runRoleTransition(db, async tx => {
+  return runRoleTransition(db, "return-to-viewer", targetId, async tx => {
     const actor = await authorizeActor(tx, actorId, targetId);
     const target = await tx.user.findUnique({
       where: { id: targetId },

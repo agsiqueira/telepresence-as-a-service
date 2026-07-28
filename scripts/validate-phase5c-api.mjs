@@ -143,9 +143,16 @@ for (const [code, status] of Object.entries(mappings)) {
   assert.equal(response.headers.get("cache-control"), "no-store");
 }
 
+const loggedFailures = [];
+const originalConsoleError = console.error;
+console.error = (...args) => loggedFailures.push(args);
 const unexpected = await invoke(createRoleTransitionHandler("assign-operator", { getUser: admin, transition: async () => { throw new Error("Prisma P2002 secret stack SQL"); } }));
+console.error = originalConsoleError;
 assert.equal(unexpected.status, 500);
 assert.deepEqual(await bodyOf(unexpected), { error: "Role change could not be completed", code: "INTERNAL_ERROR" });
+assert.equal(loggedFailures.length, 1);
+assert.deepEqual(loggedFailures[0].slice(0, 2), ["Unexpected role transition request failure", { operation: "assign-operator", targetId: validId }]);
+assert.equal(loggedFailures[0][2] instanceof Error, true);
 
 const middleware = readFileSync("middleware.ts", "utf8");
 assert.doesNotMatch(middleware, /api\/admin.*isPublic|isPublic.*api\/admin/s);

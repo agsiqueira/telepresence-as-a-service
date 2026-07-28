@@ -117,7 +117,8 @@ export function createRoleTransitionHandler(
         return json({ error: failure.message, code: result.code }, failure.status);
       }
       return json(result.value, 200);
-    } catch {
+    } catch (error) {
+      console.error("Unexpected role transition request failure", { operation, targetId: params.id }, error);
       return json(
         { error: "Role change could not be completed", code: "INTERNAL_ERROR" },
         500

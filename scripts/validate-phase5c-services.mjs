@@ -225,9 +225,16 @@ await expectFailure(returnOperatorToViewer(mock.db, "admin", "target"), "ACTIVE_
 
 state = baseState(Role.VIEWER);
 mock = mockDatabase(state, { failAudit: true });
+const loggedFailures = [];
+const originalConsoleError = console.error;
+console.error = (...args) => loggedFailures.push(args);
 await expectFailure(assignViewerAsOperator(mock.db, "admin", "target"), "INTERNAL_INVARIANT_FAILURE");
+console.error = originalConsoleError;
 assert.equal(mock.state().users.target.role, Role.VIEWER, "audit failure rolls back role mutation");
 assert.equal(mock.state().profiles.target, undefined, "audit failure rolls back profile creation");
+assert.equal(loggedFailures.length, 1);
+assert.deepEqual(loggedFailures[0].slice(0, 2), ["Unexpected role transition failure", { operation: "assign-operator", targetId: "target" }]);
+assert.equal(loggedFailures[0][2] instanceof Error, true);
 
 state = baseState(Role.VIEWER);
 mock = mockDatabase(state, { conflictsBeforeWork: 2 });
@@ -242,7 +249,9 @@ assert.equal(mock.attempts(), 3);
 assert.equal(mock.state().audits.length, 0);
 
 mock = mockDatabase(baseState(Role.VIEWER), { nonRetryableBeforeWork: true });
+console.error = () => undefined;
 await expectFailure(assignViewerAsOperator(mock.db, "admin", "target"), "INTERNAL_INVARIANT_FAILURE");
+console.error = originalConsoleError;
 assert.equal(mock.attempts(), 1, "non-retryable failures are not retried");
 
 const source = readFileSync("lib/role-transitions.ts", "utf8");
