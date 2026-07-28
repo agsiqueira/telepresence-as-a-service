@@ -13,13 +13,13 @@ export function parseParticipantQuery(params: URLSearchParams) {
   const status = params.get("status") ?? "";
   const search = (params.get("search") ?? "").trim().replace(/\s+/g, " ");
   const page = Number(params.get("page") ?? 1);
-  if (!Number.isInteger(limit) || limit < 1 || limit > ADMIN_MAX_LIMIT || !Number.isInteger(page) || page < 1 || page > 1000 || !["", "VIEWER", "OPERATOR"].includes(role) || !["", ...Object.values(OperatorPilotStatus)].includes(status) || search.length > 80) return null;
-  return { limit, page, role: role as "" | "VIEWER" | "OPERATOR", status: status as "" | OperatorPilotStatus, search };
+  if (!Number.isInteger(limit) || limit < 1 || limit > ADMIN_MAX_LIMIT || !Number.isInteger(page) || page < 1 || page > 1000 || !["", "VIEWER", "OPERATOR", "ADMIN"].includes(role) || !["", ...Object.values(OperatorPilotStatus)].includes(status) || search.length > 80) return null;
+  return { limit, page, role: role as "" | "VIEWER" | "OPERATOR" | "ADMIN", status: status as "" | OperatorPilotStatus, search };
 }
 
 export async function listAdminParticipants(db: PrismaClient, input: NonNullable<ReturnType<typeof parseParticipantQuery>>) {
   const where: Prisma.UserWhereInput = {
-    role: input.role || { in: [Role.VIEWER, Role.OPERATOR] },
+    role: input.role || { in: [Role.VIEWER, Role.OPERATOR, Role.ADMIN] },
     name: input.search ? { contains: input.search, mode: "insensitive" } : undefined,
     operatorProfile: input.status ? { is: { pilotStatus: input.status } } : undefined,
   };

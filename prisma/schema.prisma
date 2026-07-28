@@ -19,6 +19,11 @@ enum OperatorPilotStatus {
   SUSPENDED
 }
 
+enum AdminRoleChangeAction {
+  ASSIGN_OPERATOR
+  RETURN_TO_VIEWER
+}
+
 enum TripStatus {
   REQUESTED
   OFFERED
@@ -50,16 +55,33 @@ model User {
   activeTripId             String?
   createdAt                DateTime @default(now())
 
-  tripsAsViewer       Trip[]                @relation("TripsAsViewer")
-  tripsAsOperator     Trip[]                @relation("TripsAsOperator")
-  feedback            Feedback[]
-  operatorProfile     OperatorProfile?
-  destinationServices OperatorDestination[]
-  offers              TripOffer[]           @relation("OperatorOffers")
-  offeredTrips        Trip[]                @relation("OfferedOperator")
+  tripsAsViewer        Trip[]                 @relation("TripsAsViewer")
+  tripsAsOperator      Trip[]                 @relation("TripsAsOperator")
+  feedback             Feedback[]
+  operatorProfile      OperatorProfile?
+  destinationServices  OperatorDestination[]
+  offers               TripOffer[]            @relation("OperatorOffers")
+  offeredTrips         Trip[]                 @relation("OfferedOperator")
+  roleChangesPerformed AdminRoleChangeAudit[] @relation("AdminRoleChangeActor")
+  roleChangesReceived  AdminRoleChangeAudit[] @relation("AdminRoleChangeTarget")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
+}
+
+model AdminRoleChangeAudit {
+  id           String                @id @default(cuid())
+  actor        User                  @relation("AdminRoleChangeActor", fields: [actorId], references: [id], onDelete: Restrict)
+  actorId      String
+  target       User                  @relation("AdminRoleChangeTarget", fields: [targetId], references: [id], onDelete: Restrict)
+  targetId     String
+  action       AdminRoleChangeAction
+  previousRole Role
+  newRole      Role
+  createdAt    DateTime              @default(now())
+
+  @@index([targetId, createdAt])
+  @@index([actorId, createdAt])
 }
 
 model Destination {

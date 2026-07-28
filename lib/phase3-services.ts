@@ -69,6 +69,15 @@ export async function createTripRequest(
 ): Promise<ServiceResult<{ trip: Prisma.TripGetPayload<object>; created: boolean }>> {
   try {
     return await runSerializable(db, async tx => {
+      const participant = await tx.user.findUnique({
+        where: { id: viewerId },
+        select: { role: true },
+      });
+      if (!participant) return { ok: false, status: 404, error: "Viewer not found" } as const;
+      if (participant.role !== Role.VIEWER) {
+        return conflict("Participant is no longer a Viewer");
+      }
+
       const existing = await tx.trip.findFirst({
         where: {
           viewerId,
