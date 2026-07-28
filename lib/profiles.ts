@@ -41,6 +41,7 @@ export async function evaluateOperatorReadiness(db: PrismaClient, userId: string
     where: { id: userId },
     select: {
       role: true,
+      name: true,
       pendingOfferTripId: true,
       activeTripId: true,
       operatorProfile: true,
@@ -53,7 +54,7 @@ export async function evaluateOperatorReadiness(db: PrismaClient, userId: string
   if (user.operatorProfile.pilotStatus === OperatorPilotStatus.SUSPENDED) return { eligible: false, code: "SUSPENDED", message: "Your pilot participation is suspended" };
   if (user.pendingOfferTripId || user.activeTripId || user.tripsAsOperator.length) return { eligible: false, code: "ACTIVE_ASSIGNMENT", message: "Availability cannot change during an offer or active visit" };
   const profile = user.operatorProfile;
-  if (!profileIsComplete(profile, user.destinationServices.length, profile.supportsCustom)) return { eligible: false, code: "MISSING_SERVICE_CONFIGURATION", message: "Complete your service configuration before going online" };
+  if (!profileIsComplete(profile, user.destinationServices.length, profile.supportsCustom, publicDisplayName(user.name))) return { eligible: false, code: "MISSING_SERVICE_CONFIGURATION", message: "Complete your profile and service configuration before going online" };
   if (profile.languages.some(value => !ALLOWED_LANGUAGES.includes(value as never)) || profile.durationOptions.some(value => !ALLOWED_DURATIONS.includes(value as never))) return { eligible: false, code: "MISSING_SERVICE_CONFIGURATION", message: "Review your service configuration before going online" };
   return { eligible: true, code: "READY", message: "Ready to go online" };
 }

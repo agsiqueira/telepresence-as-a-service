@@ -1,4 +1,4 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { Role, type User } from "@prisma/client";
 import { db } from "@/lib/db";
 
@@ -9,16 +9,10 @@ export async function getCurrentUser() {
   const existing = await db.user.findUnique({ where: { clerkId: userId } });
   if (existing) return existing;
 
-  const clerkUser = await currentUser();
-  const name =
-    clerkUser?.firstName ??
-    clerkUser?.username ??
-    null;
-
   return db.user.upsert({
     where: { clerkId: userId },
     update: {},
-    create: { clerkId: userId, name },
+    create: { clerkId: userId, name: null },
   });
 }
 

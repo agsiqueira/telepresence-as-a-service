@@ -35,11 +35,15 @@ export function profileIsComplete(
     "operatingArea" | "serviceRadiusKm" | "languages" | "accessibilityCapabilities" | "durationOptions"
   > | null,
   destinationCount: number,
-  supportsCustom: boolean
+  supportsCustom: boolean,
+  displayName: string | null = null
 ) {
   if (!profile) return false;
   return Boolean(
-    profile.operatingArea.trim().length >= 2 &&
+    displayName?.trim() &&
+      !/\S+@\S+\.\S+/.test(displayName) &&
+      displayName.trim().length <= 80 &&
+      profile.operatingArea.trim().length >= 2 &&
       profile.operatingArea.trim().length <= 80 &&
       Number.isFinite(profile.serviceRadiusKm) &&
       profile.serviceRadiusKm >= 1 &&
@@ -70,6 +74,7 @@ function eligibleOperatorWhere(trip: TripForMatching): Prisma.UserWhereInput {
   const custom = Boolean(trip.customDestination || trip.destinationRef?.custom);
   return {
     role: Role.OPERATOR,
+    name: { not: null },
     online: true,
     operatorProfile: {
       is: {

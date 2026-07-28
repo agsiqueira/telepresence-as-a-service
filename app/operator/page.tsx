@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
 import ProfileSettings from "@/components/ProfileSettings";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
@@ -30,6 +30,7 @@ type OperatorHistory = {
   status: string;
   trip: { id: string; destination: string; status: string; requestedDuration: number | null };
 };
+type SettingsPayload = { destinations?: DestinationOption[]; destinationIds?: string[]; online?: boolean; complete?: boolean; profile?: { operatingArea: string; serviceRadiusKm: number; supportsCustom: boolean; languages: string[]; accessibilityCapabilities: string[]; durationOptions: number[]; pilotStatus: "PENDING" | "APPROVED" | "SUSPENDED" }; readiness?: { eligible: boolean; code: string; message: string } };
 
 const LANGUAGE_OPTIONS = ["English", "Spanish", "French", "Portuguese"];
 const ACCESSIBILITY_OPTIONS = [
@@ -64,6 +65,8 @@ export default function OperatorPage() {
   const [mediaRetry, setMediaRetry] = useState(0);
   const [tripEnded, setTripEnded] = useState(false);
   const [pilotStatus, setPilotStatus] = useState<"PENDING" | "APPROVED" | "SUSPENDED" | null>(null);
+  const [readiness, setReadiness] = useState<{ eligible: boolean; code: string; message: string } | null>(null);
+  const [settingsRefresh, setSettingsRefresh] = useState(0);
   const [pollingMessage, setPollingMessage] = useState("");
   const [pollRetry, setPollRetry] = useState(0);
   const endingRef = useRef(false);
@@ -72,35 +75,29 @@ export default function OperatorPage() {
   const activeTripId = activeTrip?.id;
   const activeTripStatus = activeTrip?.status;
 
+  const applySettings = useCallback((data: SettingsPayload) => {
+    setDestinations(data.destinations ?? []);
+    setDestinationIds(data.destinationIds ?? []);
+    setOnline(Boolean(data.online));
+    setSetupComplete(previous => {
+      if (!data.complete) setEditing(true);
+      else if (!previous) setEditing(false);
+      return Boolean(data.complete);
+    });
+    setReadiness(data.readiness ?? null);
+    if (data.profile) {
+      setPilotStatus(data.profile.pilotStatus);
+      setOperatingArea(data.profile.operatingArea);
+      setServiceRadiusKm(data.profile.serviceRadiusKm);
+      setSupportsCustom(data.profile.supportsCustom);
+      setLanguages(data.profile.languages);
+      setAccessibility(data.profile.accessibilityCapabilities);
+      setDurations(data.profile.durationOptions);
+    }
+  }, []);
+
   useEffect(() => {
     const currentRequest = new AbortController();
-    void fetch("/api/operator/settings", { cache: "no-store", signal: currentRequest.signal })
-      .then(response => requireJsonResponse<{
-        destinations?: DestinationOption[];
-        destinationIds?: string[];
-        online?: boolean;
-        complete?: boolean;
-        profile?: { operatingArea: string; serviceRadiusKm: number; supportsCustom: boolean; languages: string[]; accessibilityCapabilities: string[]; durationOptions: number[]; pilotStatus: "PENDING" | "APPROVED" | "SUSPENDED" };
-      }>(response))
-      .then((data) => {
-        setDestinations(data.destinations ?? []);
-        setDestinationIds(data.destinationIds ?? []);
-        setOnline(Boolean(data.online));
-        setSetupComplete(Boolean(data.complete));
-        setEditing(!data.complete);
-        if (data.profile) {
-          setPilotStatus(data.profile.pilotStatus);
-          setOperatingArea(data.profile.operatingArea);
-          setServiceRadiusKm(data.profile.serviceRadiusKm);
-          setSupportsCustom(data.profile.supportsCustom);
-          setLanguages(data.profile.languages);
-          setAccessibility(data.profile.accessibilityCapabilities);
-          setDurations(data.profile.durationOptions);
-        }
-      })
-      .catch(error => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setMessage("Unable to load service settings. Please retry.");
-      });
     void fetch("/api/trips/current", { cache: "no-store", signal: currentRequest.signal })
       .then(response => requireJsonResponse<{ trip: Trip | null }>(response))
       .then(data => {
@@ -117,6 +114,32 @@ export default function OperatorPage() {
       });
     return () => currentRequest.abort();
   }, []);
+
+  useEffect(() => {
+    if (activeTrip) return;
+    return createResilientPoller({
+      intervalMs: 10000,
+      maxIntervalMs: 30000,
+      poll: async signal => {
+        const response = await fetch("/api/operator/settings", { cache: "no-store", signal });
+        const data = await requireJsonResponse<SettingsPayload>(response);
+        applySettings(data);
+        setMessage(current => current === "Unable to refresh pilot status. Please retry." ? "" : current);
+        return "continue";
+      },
+      onPersistentFailure: () => setMessage("Unable to refresh pilot status. Please retry."),
+    });
+  }, [activeTrip, applySettings, settingsRefresh]);
+
+  useEffect(() => {
+    if (activeTrip) return;
+    const refresh = () => setSettingsRefresh(value => value + 1);
+    const visible = () => { if (document.visibilityState === "visible") refresh(); };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("operator-profile-updated", refresh);
+    document.addEventListener("visibilitychange", visible);
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("operator-profile-updated", refresh); document.removeEventListener("visibilitychange", visible); };
+  }, [activeTrip]);
 
   useEffect(() => {
     if (!activeTripId || (activeTripStatus !== "ACCEPTED" && activeTripStatus !== "IN_PROGRESS")) return;
@@ -175,10 +198,10 @@ export default function OperatorPage() {
     });
     const data = await response.json();
     if (!response.ok) return setMessage(data.error ?? "Unable to save settings");
-    setSetupComplete(true);
+    setSetupComplete(Boolean(data.complete));
     setOnline(false);
-    setEditing(false);
-    setMessage("Service settings saved. You can now go online.");
+    setEditing(!data.complete);
+    setMessage(data.complete ? "Service settings saved. You can now go online when approved." : "Service settings saved. Add a display name to complete your profile.");
   }
 
   async function toggleOnline() {
@@ -309,6 +332,7 @@ export default function OperatorPage() {
       <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />
       {pilotStatus === "PENDING" && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">Your operator profile is awaiting pilot approval.</p>}
       {pilotStatus === "SUSPENDED" && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">Your pilot participation is suspended. You cannot accept new visits.</p>}
+      {pilotStatus === "APPROVED" && !online && <p className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-900" role="status">Pilot approval confirmed. {readiness?.eligible ? "You can now go online." : readiness?.message ?? "Complete your profile before going online."}</p>}
 
       {(editing || !setupComplete) ? (
         <section className="mt-6 rounded-2xl border p-5"><h2 className="text-xl font-bold">Service setup</h2><p className="mt-1 text-sm text-gray-600">Complete the required settings before going online.</p>

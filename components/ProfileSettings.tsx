@@ -32,6 +32,7 @@ export default function ProfileSettings({ role }: { role: "viewer" | "operator" 
       const body = role === "viewer" ? { displayName, preferredLanguage, accessibilityPreferences } : { displayName };
       await requireJsonResponse(await fetch(endpoint, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
       setMessage("Profile saved.");
+      if (role === "operator") window.dispatchEvent(new Event("operator-profile-updated"));
     } catch (error) { setMessage(error instanceof Error ? error.message : "Profile could not be saved."); }
     finally { saving.current = false; }
   }

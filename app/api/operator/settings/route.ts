@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/current-user";
 import { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES, profileIsComplete } from "@/lib/marketplace";
 import { updateOperatorSettings, validateSettingsInput } from "@/lib/phase3-services";
+import { evaluateOperatorReadiness, publicDisplayName } from "@/lib/profiles";
 
 export async function GET() {
  try {
@@ -15,7 +16,8 @@ export async function GET() {
     db.destination.findMany({ where: { custom: false, OR: [{ active: true }, { operators: { some: { operatorId: user.id } } }] }, select: { id: true, name: true, city: true, active: true }, orderBy: { name: "asc" } }),
     db.operatorDestination.findMany({ where: { operatorId: user.id }, select: { destinationId: true } }),
   ]);
-  return NextResponse.json({ profile, destinationIds: services.map(item => item.destinationId), destinations, online: user.online, complete: profileIsComplete(profile, services.length, profile?.supportsCustom ?? false), options: { durations: ALLOWED_DURATIONS, languages: ALLOWED_LANGUAGES, accessibility: ALLOWED_ACCESSIBILITY } });
+  const readiness = await evaluateOperatorReadiness(db, user.id);
+  return NextResponse.json({ profile, destinationIds: services.map(item => item.destinationId), destinations, online: user.online, complete: profileIsComplete(profile, services.length, profile?.supportsCustom ?? false, publicDisplayName(user.name)), readiness, options: { durations: ALLOWED_DURATIONS, languages: ALLOWED_LANGUAGES, accessibility: ALLOWED_ACCESSIBILITY } });
  } catch (error) {
   console.error("Operator settings request failed", error instanceof Error ? error.name : "UnknownError");
   return NextResponse.json({ error: "Service settings are temporarily unavailable" }, { status: 500 });
@@ -31,7 +33,9 @@ export async function PUT(req: NextRequest) {
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: input.status });
   const result = await updateOperatorSettings(db, user.id, input.value);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-  return NextResponse.json({ profile: { operatingArea: result.value.profile.operatingArea, serviceRadiusKm: result.value.profile.serviceRadiusKm, supportsCustom: result.value.profile.supportsCustom, languages: result.value.profile.languages, accessibilityCapabilities: result.value.profile.accessibilityCapabilities, durationOptions: result.value.profile.durationOptions }, destinationIds: result.value.destinationIds, online: false, complete: true });
+  const activeDestinationCount = await db.destination.count({ where: { id: { in: result.value.destinationIds }, active: true } });
+  const complete = profileIsComplete(result.value.profile, activeDestinationCount, result.value.profile.supportsCustom, publicDisplayName(user.name));
+  return NextResponse.json({ profile: { operatingArea: result.value.profile.operatingArea, serviceRadiusKm: result.value.profile.serviceRadiusKm, supportsCustom: result.value.profile.supportsCustom, languages: result.value.profile.languages, accessibilityCapabilities: result.value.profile.accessibilityCapabilities, durationOptions: result.value.profile.durationOptions }, destinationIds: result.value.destinationIds, online: false, complete });
  } catch (error) {
   if (error instanceof SyntaxError) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   console.error("Operator settings update failed", error instanceof Error ? error.name : "UnknownError");

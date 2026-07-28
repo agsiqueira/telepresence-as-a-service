@@ -12,6 +12,7 @@ const alias = ".phase3-test-build/node_modules/@/lib";
 mkdirSync(alias, { recursive: true });
 cpSync(".phase3-test-build/lib/marketplace.js", `${alias}/marketplace.js`);
 const { publicDisplayName, validateOperatorPresentation, validateViewerProfile } = await import("../.phase3-test-build/lib/profiles.js");
+const { profileIsComplete } = await import("../.phase3-test-build/lib/marketplace.js");
 
 assert.deepEqual(validateViewerProfile({ displayName: "  Pilot   Viewer ", preferredLanguage: "English", accessibilityPreferences: ["Slower-paced visit", "Slower-paced visit"] }), { ok: true, value: { displayName: "Pilot Viewer", preferredLanguage: "English", accessibilityPreferences: ["Slower-paced visit"] } });
 for (const body of [
@@ -23,5 +24,8 @@ for (const body of [
 assert.equal(validateOperatorPresentation({ displayName: "Operator", pilotStatus: "APPROVED" }).ok, false);
 assert.equal(validateOperatorPresentation({ displayName: " Operator " }).ok, true);
 assert.equal(publicDisplayName("private@example.test"), "");
+const completeOperator = { operatingArea: "Pilot City", serviceRadiusKm: 10, languages: ["English"], accessibilityCapabilities: [], durationOptions: [30] };
+assert.equal(profileIsComplete(completeOperator, 1, false, "Persisted Operator"), true);
+assert.equal(profileIsComplete(completeOperator, 1, false, ""), false);
 rmSync(".phase3-test-build", { recursive: true, force: true });
 console.log("Phase 5A profile validation service assertions passed.");
