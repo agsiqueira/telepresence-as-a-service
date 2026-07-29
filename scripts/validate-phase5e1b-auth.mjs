@@ -16,6 +16,6 @@ for (const layout of ["app/viewer/layout.tsx", "app/operator/layout.tsx", "app/a
 const routeFiles = execFileSync("rg", ["--files", "app/api"], { encoding: "utf8" }).trim().split(/\r?\n/).filter(file => file.endsWith("route.ts"));
 for (const file of routeFiles) {
   const source = read(file);
-  assert.match(source, /authorizeApiUser|authorizeAdminApi|deactivatedAccountApiResponse|createViewerOperatorApplication|createAdminOperatorApplication|createRoleTransitionHandler|createAccountLifecycleHandler/, `${file} must use a centralized account-status enforcement seam`);
+  assert.match(source, /authorizeApiUser|authorizeAdminApi|deactivatedAccountApiResponse|createViewerOperatorApplication|createAdminOperatorApplication|createRoleTransitionHandler|createAccountLifecycleHandler|createAdministratorGovernanceHandler/, `${file} must use a centralized account-status enforcement seam`);
 }
 console.log(`Phase 5E.1B account-status enforcement assertions passed across ${routeFiles.length} protected API routes.`);

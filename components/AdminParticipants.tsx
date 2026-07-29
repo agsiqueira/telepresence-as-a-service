@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { canCancelRoleDialog, createAdminRoleChangeController, cycleDialogFocus, roleActionFor, type AdminRoleAction } from "@/lib/admin-role-ui";
 import { requireJsonResponse } from "@/lib/resilient-poller";
 import AccountLifecycleControls from "@/components/AccountLifecycleControls";
+import AdministratorGovernanceControls from "@/components/AdministratorGovernanceControls";
 
 type Participant = {
   reference: string;
@@ -12,6 +13,9 @@ type Participant = {
   accountStatus: "ACTIVE" | "DEACTIVATED";
   deactivatedAt: string | null;
   isCurrentAdmin: boolean;
+  canAssignAdministrator: boolean;
+  canRemoveAdministrator: boolean;
+  administratorActionBlockedReason: "SELF_ACTION" | "TARGET_INACTIVE" | "UNSUPPORTED_ROLE" | null;
   joinedDate: string;
   pilotStatus?: "PENDING" | "APPROVED" | "SUSPENDED";
   online?: boolean;
@@ -133,7 +137,7 @@ export default function AdminParticipants() {
     <ul className="mt-5 grid gap-4">{state === "ready" && participants.map(participant => {
       const pending = pendingReference === participant.reference;
       return <li key={participant.reference} className="min-w-0 rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{participant.displayName}</h2><p className="text-sm text-gray-600">Joined {participant.joinedDate}{participant.deactivatedAt ? ` · Deactivated ${new Date(participant.deactivatedAt).toLocaleDateString()}` : ""}</p></div><div className="flex flex-wrap gap-2"><span className="rounded-full border px-3 py-1 text-sm font-semibold">Account role: {participant.role}</span><span className={`rounded-full border px-3 py-1 text-sm font-semibold ${participant.accountStatus === "ACTIVE" ? "border-green-600 text-green-800" : "border-red-600 text-red-800"}`}>{participant.accountStatus}</span></div></div>
+        <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{participant.displayName}</h2><p className="text-sm text-gray-600">Joined {participant.joinedDate}{participant.deactivatedAt ? ` · Deactivated ${new Date(participant.deactivatedAt).toLocaleDateString()}` : ""}</p></div><div className="flex flex-wrap gap-2"><span className={`rounded-full border px-3 py-1 text-sm font-semibold ${participant.role === "ADMIN" ? "border-purple-600 bg-purple-50 text-purple-900" : ""}`}>Account role: {participant.role}</span><span className={`rounded-full border px-3 py-1 text-sm font-semibold ${participant.accountStatus === "ACTIVE" ? "border-green-600 text-green-800" : "border-red-600 text-red-800"}`}>Account status: {participant.accountStatus}</span></div></div>
         {participant.role === "OPERATOR" && <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3"><div><dt className="font-medium">Operator pilot status</dt><dd>{participant.pilotStatus}</dd></div><div><dt className="font-medium">Online availability</dt><dd>{participant.online ? "Online" : "Offline"}</dd></div><div><dt className="font-medium">Operator readiness</dt><dd>Profile {participant.profileComplete ? "complete" : "incomplete"} · {participant.activeState?.replaceAll("_", " ").toLowerCase()}</dd></div></dl>}
         <div className="mt-4 flex flex-wrap gap-2">
           {roleActionFor(participant.role) === "ASSIGN_OPERATOR" && <button disabled={pending} className="min-h-11 rounded-lg border px-3 disabled:opacity-50" onClick={() => openConfirmation(participant, "ASSIGN_OPERATOR")}>{pending ? "Updating…" : "Assign as Operator"}</button>}
@@ -142,6 +146,7 @@ export default function AdminParticipants() {
           {participant.role === "OPERATOR" && participant.pilotStatus !== "SUSPENDED" && <button disabled={pending} className="min-h-11 rounded-lg border border-red-500 px-3 text-red-700" onClick={() => openConfirmation(participant, "SUSPENDED")}>Suspend</button>}
           {participant.role === "OPERATOR" && participant.pilotStatus === "SUSPENDED" && <button disabled={pending} className="min-h-11 rounded-lg border px-3" onClick={() => openConfirmation(participant, "APPROVED")}>Restore approval</button>}
           {participant.role === "OPERATOR" && participant.online && <button disabled={pending} className="min-h-11 rounded-lg border px-3" onClick={() => openConfirmation(participant, "OFFLINE")}>Take offline</button>}
+          <AdministratorGovernanceControls reference={participant.reference} displayName={participant.displayName} role={participant.role} accountStatus={participant.accountStatus} isCurrentAdmin={participant.isCurrentAdmin} canAssignAdministrator={participant.canAssignAdministrator} canRemoveAdministrator={participant.canRemoveAdministrator} administratorActionBlockedReason={participant.administratorActionBlockedReason} onChanged={load} onUnauthorized={() => setState("unauthorized")} />
           <AccountLifecycleControls reference={participant.reference} displayName={participant.displayName} accountStatus={participant.accountStatus} isCurrentAdmin={participant.isCurrentAdmin} onChanged={load} />
         </div>
       </li>;

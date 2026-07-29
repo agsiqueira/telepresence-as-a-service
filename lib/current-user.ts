@@ -17,6 +17,11 @@ export async function getCurrentUser() {
   });
 }
 
+export async function getCurrentPersistedUser() {
+  const { userId } = auth();
+  return userId ? db.user.findUnique({ where: { clerkId: userId } }) : null;
+}
+
 export async function requireCurrentUser() {
   const user = await getCurrentUser();
   if (!user) {

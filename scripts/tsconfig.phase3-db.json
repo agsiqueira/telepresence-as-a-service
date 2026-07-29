@@ -49,6 +49,8 @@
     "../lib/account-lifecycle.ts",
     "../lib/account-lifecycle-api.ts",
     "../lib/administrator-governance.ts",
+    "../lib/administrator-governance-api.ts",
+    "../lib/administrator-governance-ui.ts",
     "../lib/operator-application-api.ts",
     "../lib/operator-application-ui.ts",
     "../lib/admin-operator-application-ui.ts",
