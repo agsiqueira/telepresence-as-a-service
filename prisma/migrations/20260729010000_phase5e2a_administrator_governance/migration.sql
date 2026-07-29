@@ -1,6 +1,12 @@
 -- Phase 5E.2A extends role auditing for administrator governance while preserving historical rows.
+BEGIN;
+
 ALTER TYPE "AdminRoleChangeAction" ADD VALUE 'ASSIGN_ADMIN';
 ALTER TYPE "AdminRoleChangeAction" ADD VALUE 'REMOVE_ADMIN';
+
+COMMIT;
+
+BEGIN;
 
 ALTER TABLE "AdminRoleChangeAudit"
 ADD COLUMN "reason" TEXT;
@@ -19,3 +25,5 @@ ADD CONSTRAINT "AdminRoleChangeAudit_governance_reason_check" CHECK (
 
 CREATE INDEX "AdminRoleChangeAudit_action_createdAt_idx"
 ON "AdminRoleChangeAudit"("action", "createdAt");
+
+COMMIT;
