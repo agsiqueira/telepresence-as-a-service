@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/current-user";
+import { deactivatedAccountApiResponse, getCurrentUser } from "@/lib/current-user";
 
 const ACTIVE = [TripStatus.REQUESTED, TripStatus.OFFERED, TripStatus.ACCEPTED, TripStatus.IN_PROGRESS];
 const SELECT = {
@@ -18,6 +18,7 @@ export async function GET() {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
     const trip = await db.trip.findFirst({
       where: user.role === Role.VIEWER
         ? { viewerId: user.id, status: { in: ACTIVE } }

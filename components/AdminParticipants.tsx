@@ -3,11 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { canCancelRoleDialog, createAdminRoleChangeController, cycleDialogFocus, roleActionFor, type AdminRoleAction } from "@/lib/admin-role-ui";
 import { requireJsonResponse } from "@/lib/resilient-poller";
+import AccountLifecycleControls from "@/components/AccountLifecycleControls";
 
 type Participant = {
   reference: string;
   displayName: string;
   role: "VIEWER" | "OPERATOR" | "ADMIN";
+  accountStatus: "ACTIVE" | "DEACTIVATED";
+  deactivatedAt: string | null;
+  isCurrentAdmin: boolean;
   joinedDate: string;
   pilotStatus?: "PENDING" | "APPROVED" | "SUSPENDED";
   online?: boolean;
@@ -25,6 +29,7 @@ export default function AdminParticipants() {
   const [state, setState] = useState<"loading" | "ready" | "unauthorized" | "failed">("loading");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("");
+  const [accountStatus, setAccountStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
@@ -39,7 +44,7 @@ export default function AdminParticipants() {
 
   const load = useCallback((signal?: AbortSignal) => {
     setState("loading");
-    const query = new URLSearchParams({ limit: "20", page: String(page), ...(role && { role }), ...(status && { status }), ...(search.trim() && { search: search.trim() }) });
+    const query = new URLSearchParams({ limit: "20", page: String(page), ...(role && { role }), ...(status && { status }), ...(accountStatus && { accountStatus }), ...(search.trim() && { search: search.trim() }) });
     return fetch(`/api/admin/participants?${query}`, { cache: "no-store", signal }).then(async response => {
       if ([401, 403].includes(response.status)) { setState("unauthorized"); return; }
       const data = await requireJsonResponse<{ participants: Participant[]; hasNext: boolean }>(response);
@@ -49,7 +54,7 @@ export default function AdminParticipants() {
     }).catch(error => {
       if (!(error instanceof DOMException && error.name === "AbortError")) setState("failed");
     });
-  }, [page, role, search, status]);
+  }, [accountStatus, page, role, search, status]);
 
   useEffect(() => {
     const request = new AbortController();
@@ -114,11 +119,12 @@ export default function AdminParticipants() {
   }
 
   return <section className="mt-6">
-    <form className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-4" onSubmit={event => { event.preventDefault(); setPage(1); void load(); }}>
+    <form className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-5" onSubmit={event => { event.preventDefault(); setPage(1); void load(); }}>
       <label className="text-sm font-medium sm:col-span-2">Search display names<input value={search} maxLength={80} onChange={event => setSearch(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></label>
       <label className="text-sm font-medium">Account role<select value={role} onChange={event => { setRole(event.target.value); setPage(1); }} className="mt-1 min-h-11 w-full rounded-lg border px-3"><option value="">All</option><option>VIEWER</option><option>OPERATOR</option><option>ADMIN</option></select></label>
       <label className="text-sm font-medium">Operator pilot status<select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }} className="mt-1 min-h-11 w-full rounded-lg border px-3"><option value="">All</option><option>PENDING</option><option>APPROVED</option><option>SUSPENDED</option></select></label>
-      <button className="min-h-11 rounded-lg bg-gray-950 px-4 text-white sm:col-span-4">Apply filters</button>
+      <label className="text-sm font-medium">Account status<select value={accountStatus} onChange={event => { setAccountStatus(event.target.value); setPage(1); }} className="mt-1 min-h-11 w-full rounded-lg border px-3"><option value="">All</option><option>ACTIVE</option><option>DEACTIVATED</option></select></label>
+      <button className="min-h-11 rounded-lg bg-gray-950 px-4 text-white sm:col-span-5">Apply filters</button>
     </form>
     {state === "loading" && <p className="mt-5" aria-busy="true">Loading participants…</p>}
     {state === "unauthorized" && <p className="mt-5 text-red-700" role="alert">Administrator authorization is required. Sign in again to continue.</p>}
@@ -127,7 +133,7 @@ export default function AdminParticipants() {
     <ul className="mt-5 grid gap-4">{state === "ready" && participants.map(participant => {
       const pending = pendingReference === participant.reference;
       return <li key={participant.reference} className="min-w-0 rounded-xl border bg-white p-4">
-        <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{participant.displayName}</h2><p className="text-sm text-gray-600">Joined {participant.joinedDate}</p></div><span className="rounded-full border px-3 py-1 text-sm font-semibold">Account role: {participant.role}</span></div>
+        <div className="flex flex-wrap justify-between gap-2"><div className="min-w-0"><h2 className="break-words font-semibold">{participant.displayName}</h2><p className="text-sm text-gray-600">Joined {participant.joinedDate}{participant.deactivatedAt ? ` · Deactivated ${new Date(participant.deactivatedAt).toLocaleDateString()}` : ""}</p></div><div className="flex flex-wrap gap-2"><span className="rounded-full border px-3 py-1 text-sm font-semibold">Account role: {participant.role}</span><span className={`rounded-full border px-3 py-1 text-sm font-semibold ${participant.accountStatus === "ACTIVE" ? "border-green-600 text-green-800" : "border-red-600 text-red-800"}`}>{participant.accountStatus}</span></div></div>
         {participant.role === "OPERATOR" && <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3"><div><dt className="font-medium">Operator pilot status</dt><dd>{participant.pilotStatus}</dd></div><div><dt className="font-medium">Online availability</dt><dd>{participant.online ? "Online" : "Offline"}</dd></div><div><dt className="font-medium">Operator readiness</dt><dd>Profile {participant.profileComplete ? "complete" : "incomplete"} · {participant.activeState?.replaceAll("_", " ").toLowerCase()}</dd></div></dl>}
         <div className="mt-4 flex flex-wrap gap-2">
           {roleActionFor(participant.role) === "ASSIGN_OPERATOR" && <button disabled={pending} className="min-h-11 rounded-lg border px-3 disabled:opacity-50" onClick={() => openConfirmation(participant, "ASSIGN_OPERATOR")}>{pending ? "Updating…" : "Assign as Operator"}</button>}
@@ -136,6 +142,7 @@ export default function AdminParticipants() {
           {participant.role === "OPERATOR" && participant.pilotStatus !== "SUSPENDED" && <button disabled={pending} className="min-h-11 rounded-lg border border-red-500 px-3 text-red-700" onClick={() => openConfirmation(participant, "SUSPENDED")}>Suspend</button>}
           {participant.role === "OPERATOR" && participant.pilotStatus === "SUSPENDED" && <button disabled={pending} className="min-h-11 rounded-lg border px-3" onClick={() => openConfirmation(participant, "APPROVED")}>Restore approval</button>}
           {participant.role === "OPERATOR" && participant.online && <button disabled={pending} className="min-h-11 rounded-lg border px-3" onClick={() => openConfirmation(participant, "OFFLINE")}>Take offline</button>}
+          <AccountLifecycleControls reference={participant.reference} displayName={participant.displayName} accountStatus={participant.accountStatus} isCurrentAdmin={participant.isCurrentAdmin} onChanged={load} />
         </div>
       </li>;
     })}</ul>

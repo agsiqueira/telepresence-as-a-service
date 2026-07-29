@@ -24,7 +24,7 @@ const root = ".phase3-test-build/lib";
 const helperPath = `${root}/operator-application-api.js`;
 writeFileSync(helperPath, readFileSync(helperPath, "utf8").replace('require("server-only");', ""));
 writeFileSync(`${root}/db.js`, "exports.db = Object.freeze({ marker: 'trusted-database' });\n");
-writeFileSync(`${root}/current-user.js`, "exports.getCurrentUser = async () => null;\n");
+writeFileSync(`${root}/current-user.js`, "exports.getCurrentUser = async () => null; exports.isAccountDeactivated = user => user?.accountStatus === 'DEACTIVATED';\n");
 writeFileSync(`${root}/operator-applications.js`, [
   "exports.OPERATOR_APPLICATION_MAX_LIMIT = 50;",
   "for (const name of ['getAdminOperatorApplication','listAdminOperatorApplications','listViewerOperatorApplications','reviewOperatorApplication','submitOperatorApplication','withdrawOperatorApplication']) exports[name] = async () => { throw new Error('default service not expected'); };",

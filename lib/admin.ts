@@ -1,6 +1,6 @@
 import "server-only";
 
-import { OperatorPilotStatus, Prisma, Role, type PrismaClient } from "@prisma/client";
+import { AccountStatus, OperatorPilotStatus, Prisma, Role, type PrismaClient } from "@prisma/client";
 import { ALLOWED_DURATIONS, profileIsComplete } from "@/lib/marketplace";
 import { publicDisplayName } from "@/lib/profiles";
 
@@ -11,20 +11,22 @@ export function parseParticipantQuery(params: URLSearchParams) {
   const limit = Number(params.get("limit") ?? ADMIN_PAGE_LIMIT);
   const role = params.get("role") ?? "";
   const status = params.get("status") ?? "";
+  const accountStatus = params.get("accountStatus") ?? "";
   const search = (params.get("search") ?? "").trim().replace(/\s+/g, " ");
   const page = Number(params.get("page") ?? 1);
-  if (!Number.isInteger(limit) || limit < 1 || limit > ADMIN_MAX_LIMIT || !Number.isInteger(page) || page < 1 || page > 1000 || !["", "VIEWER", "OPERATOR", "ADMIN"].includes(role) || !["", ...Object.values(OperatorPilotStatus)].includes(status) || search.length > 80) return null;
-  return { limit, page, role: role as "" | "VIEWER" | "OPERATOR" | "ADMIN", status: status as "" | OperatorPilotStatus, search };
+  if (!Number.isInteger(limit) || limit < 1 || limit > ADMIN_MAX_LIMIT || !Number.isInteger(page) || page < 1 || page > 1000 || !["", "VIEWER", "OPERATOR", "ADMIN"].includes(role) || !["", ...Object.values(OperatorPilotStatus)].includes(status) || !["", ...Object.values(AccountStatus)].includes(accountStatus) || search.length > 80) return null;
+  return { limit, page, role: role as "" | "VIEWER" | "OPERATOR" | "ADMIN", status: status as "" | OperatorPilotStatus, accountStatus: accountStatus as "" | AccountStatus, search };
 }
 
-export async function listAdminParticipants(db: PrismaClient, input: NonNullable<ReturnType<typeof parseParticipantQuery>>) {
+export async function listAdminParticipants(db: PrismaClient, input: NonNullable<ReturnType<typeof parseParticipantQuery>>, actorId: string) {
   const where: Prisma.UserWhereInput = {
     role: input.role || { in: [Role.VIEWER, Role.OPERATOR, Role.ADMIN] },
     name: input.search ? { contains: input.search, mode: "insensitive" } : undefined,
     operatorProfile: input.status ? { is: { pilotStatus: input.status } } : undefined,
+    accountStatus: input.accountStatus || undefined,
   };
-  const users = await db.user.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (input.page - 1) * input.limit, take: input.limit, select: { id: true, name: true, role: true, online: true, pendingOfferTripId: true, activeTripId: true, createdAt: true, operatorProfile: { select: { pilotStatus: true, operatingArea: true, serviceRadiusKm: true, supportsCustom: true, languages: true, accessibilityCapabilities: true, durationOptions: true } }, destinationServices: { where: { destination: { active: true } }, select: { destinationId: true } } } });
-  return users.map(user => ({ reference: user.id, displayName: publicDisplayName(user.name) || "Unnamed participant", role: user.role, joinedDate: user.createdAt.toISOString().slice(0, 10), ...(user.role === Role.OPERATOR ? { pilotStatus: user.operatorProfile?.pilotStatus ?? OperatorPilotStatus.PENDING, online: user.online, activeState: user.activeTripId ? "ACTIVE_VISIT" : user.pendingOfferTripId ? "ACTIVE_OFFER" : "AVAILABLE", profileComplete: profileIsComplete(user.operatorProfile, user.destinationServices.length, user.operatorProfile?.supportsCustom ?? false, publicDisplayName(user.name)) } : {}) }));
+  const users = await db.user.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (input.page - 1) * input.limit, take: input.limit, select: { id: true, name: true, role: true, accountStatus: true, deactivatedAt: true, online: true, pendingOfferTripId: true, activeTripId: true, createdAt: true, operatorProfile: { select: { pilotStatus: true, operatingArea: true, serviceRadiusKm: true, supportsCustom: true, languages: true, accessibilityCapabilities: true, durationOptions: true } }, destinationServices: { where: { destination: { active: true } }, select: { destinationId: true } } } });
+  return users.map(user => ({ reference: user.id, displayName: publicDisplayName(user.name) || "Unnamed participant", role: user.role, accountStatus: user.accountStatus, deactivatedAt: user.deactivatedAt?.toISOString() ?? null, isCurrentAdmin: user.id === actorId, joinedDate: user.createdAt.toISOString().slice(0, 10), ...(user.role === Role.OPERATOR ? { pilotStatus: user.operatorProfile?.pilotStatus ?? OperatorPilotStatus.PENDING, online: user.online, activeState: user.activeTripId ? "ACTIVE_VISIT" : user.pendingOfferTripId ? "ACTIVE_OFFER" : "AVAILABLE", profileComplete: profileIsComplete(user.operatorProfile, user.destinationServices.length, user.operatorProfile?.supportsCustom ?? false, publicDisplayName(user.name)) } : {}) }));
 }
 
 const DESTINATION_FIELDS = new Set(["name", "shortDescription", "city", "meetingArea", "category", "durationOptions", "imageUrl", "custom", "active", "expectedUpdatedAt"]);

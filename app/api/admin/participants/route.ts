@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return auth.response;
     const input = parseParticipantQuery(req.nextUrl.searchParams);
     if (!input) return NextResponse.json({ error: "Check participant filters" }, { status: 400 });
-    const participants = await listAdminParticipants(db, input);
+    const participants = await listAdminParticipants(db, input, auth.user.id);
     return NextResponse.json({ participants, limit: input.limit, page: input.page, hasNext: participants.length === input.limit });
   } catch (error) {
     console.error("Admin participant listing failed", error instanceof Error ? error.name : "UnknownError");

@@ -44,6 +44,9 @@
     "test:phase5e1:services": "node scripts/validate-phase5e1-services.mjs",
     "test:phase5e1:harness": "node scripts/validate-phase5e1-harness.mjs",
     "test:phase5e1:db": "node scripts/run-phase5e1-db-tests.mjs",
+    "test:phase5e1b:auth": "node scripts/validate-phase5e1b-auth.mjs",
+    "test:phase5e1b:api": "node scripts/validate-phase5e1b-api.mjs",
+    "test:phase5e1b:ui": "node scripts/validate-phase5e1b-ui.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"
   },

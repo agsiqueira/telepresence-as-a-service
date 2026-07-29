@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/current-user";
+import { authorizeApiUser } from "@/lib/current-user";
 import { completeViewerFeedback } from "@/lib/trip-lifecycle";
 
 export async function POST(req: NextRequest) {
-  const user = await requireRole(Role.VIEWER);
-  if (!user) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const access = await authorizeApiUser(Role.VIEWER); if (!access.ok) return access.response; const user = access.user;
 
   const body = await req.json();
   const { tripId, presence, mediaQuality, moodBefore, moodAfter } = body as {

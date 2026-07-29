@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireRole } from "@/lib/current-user";
+import { authorizeApiUser } from "@/lib/current-user";
 import { createTripRequest, validateCreateTripInput } from "@/lib/phase3-services";
 
 const ACTIVE_STATUSES: TripStatus[] = [
@@ -12,16 +12,14 @@ const ACTIVE_STATUSES: TripStatus[] = [
 ];
 
 export async function GET(req: NextRequest) {
-  const user = await requireRole(Role.OPERATOR);
-  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await authorizeApiUser(Role.OPERATOR); if (!access.ok) return access.response; const user = access.user;
   if (!new URL(req.url).searchParams.get("mine")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const trip = await db.trip.findFirst({ where: { status: { in: ACTIVE_STATUSES }, operatorId: user.id }, orderBy: { requestedAt: "desc" } });
   return NextResponse.json({ trip });
 }
 
 export async function POST(req: NextRequest) {
-  const user = await requireRole(Role.VIEWER);
-  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await authorizeApiUser(Role.VIEWER); if (!access.ok) return access.response; const user = access.user;
   const input = validateCreateTripInput(await req.json());
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: input.status });
   const result = await createTripRequest(db, user.id, input.value);

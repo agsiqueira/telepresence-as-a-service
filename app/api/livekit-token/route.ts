@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { Role, TripStatus } from "@prisma/client";
 import { TrackSource } from "livekit-server-sdk";
 import { db } from "@/lib/db";
-import { requireCurrentUser } from "@/lib/current-user";
+import { authorizeApiUser } from "@/lib/current-user";
 import { mintLiveKitToken } from "@/lib/livekit";
 
 export async function POST(req: NextRequest) {
-  const user = await requireCurrentUser();
+  const access = await authorizeApiUser(); if (!access.ok) return access.response; const user = access.user;
   const body = await req.json();
   const { tripId } = body as { tripId?: string };
 

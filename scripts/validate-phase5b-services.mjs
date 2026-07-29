@@ -7,9 +7,9 @@ if (compile.status !== 0) process.exit(compile.status ?? 1);
 for (const module of ["marketplace", "marketplace-vocabulary", "profiles", "admin"]) { const path = `.phase3-test-build/lib/${module}.js`; writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', "")); }
 const alias = ".phase3-test-build/node_modules/@/lib"; mkdirSync(alias, { recursive: true }); for (const module of ["marketplace", "marketplace-vocabulary", "profiles"]) cpSync(`.phase3-test-build/lib/${module}.js`, `${alias}/${module}.js`);
 const { destinationSlug, parseParticipantQuery, validateAdminDestination } = await import("../.phase3-test-build/lib/admin.js");
-assert.deepEqual(parseParticipantQuery(new URLSearchParams("limit=20&page=2&role=OPERATOR&status=APPROVED&search=%20Pilot%20%20Operator%20")), { limit: 20, page: 2, role: "OPERATOR", status: "APPROVED", search: "Pilot Operator" });
-assert.deepEqual(parseParticipantQuery(new URLSearchParams("role=ADMIN")), { limit: 20, page: 1, role: "ADMIN", status: "", search: "" });
-for (const query of ["limit=0", "limit=51", "page=0", "role=SUPERADMIN", "status=UNKNOWN", `search=${"x".repeat(81)}`]) assert.equal(parseParticipantQuery(new URLSearchParams(query)), null);
+assert.deepEqual(parseParticipantQuery(new URLSearchParams("limit=20&page=2&role=OPERATOR&status=APPROVED&accountStatus=ACTIVE&search=%20Pilot%20%20Operator%20")), { limit: 20, page: 2, role: "OPERATOR", status: "APPROVED", accountStatus: "ACTIVE", search: "Pilot Operator" });
+assert.deepEqual(parseParticipantQuery(new URLSearchParams("role=ADMIN")), { limit: 20, page: 1, role: "ADMIN", status: "", accountStatus: "", search: "" });
+for (const query of ["limit=0", "limit=51", "page=0", "role=SUPERADMIN", "status=UNKNOWN", "accountStatus=UNKNOWN", `search=${"x".repeat(81)}`]) assert.equal(parseParticipantQuery(new URLSearchParams(query)), null);
 const destination = { name: " Museum ", shortDescription: " Remote visit ", city: " Pilot City ", meetingArea: " Main entrance ", category: "Culture", durationOptions: [30, 30], imageUrl: null, custom: false, active: true };
 assert.equal(validateAdminDestination(destination, true).ok, true);
 assert.equal(validateAdminDestination({ ...destination, role: "ADMIN" }, true).ok, false);

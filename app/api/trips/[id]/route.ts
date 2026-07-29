@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role, TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireCurrentUser } from "@/lib/current-user";
+import { authorizeApiUser } from "@/lib/current-user";
 import { assignWaitingTrips, expireAndReassignOffers } from "@/lib/marketplace";
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const user = await requireCurrentUser();
+  const access = await authorizeApiUser(); if (!access.ok) return access.response; const user = access.user;
   let trip = await db.trip.findUnique({ where: { id: params.id } });
   const isViewer = user.role === Role.VIEWER && trip?.viewerId === user.id;
   const isOperator =

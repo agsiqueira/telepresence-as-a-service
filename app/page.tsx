@@ -2,12 +2,13 @@ import { SignInButton } from "@clerk/nextjs";
 import { Role } from "@prisma/client";
 import { redirect } from "next/navigation";
 
-import { getCurrentUser } from "@/lib/current-user";
+import { getCurrentUser, isAccountDeactivated } from "@/lib/current-user";
 
 export default async function HomePage() {
   const user = await getCurrentUser();
 
   if (user) {
+    if (isAccountDeactivated(user)) redirect("/account-deactivated");
     if (user.role === Role.VIEWER) redirect("/viewer");
     if (user.role === Role.OPERATOR) redirect("/operator");
     redirect("/admin/participants");

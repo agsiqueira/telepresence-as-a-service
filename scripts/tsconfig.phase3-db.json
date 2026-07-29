@@ -42,6 +42,7 @@
     "../lib/role-transitions.ts",
     "../lib/operator-applications.ts",
     "../lib/account-lifecycle.ts",
+    "../lib/account-lifecycle-api.ts",
     "../lib/operator-application-api.ts",
     "../lib/operator-application-ui.ts",
     "../lib/admin-operator-application-ui.ts",

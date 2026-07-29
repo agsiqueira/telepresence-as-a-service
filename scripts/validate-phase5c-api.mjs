@@ -32,7 +32,7 @@ const helperBuild = `${buildRoot}/lib/role-transition-api.js`;
 writeFileSync(helperBuild, readFileSync(helperBuild, "utf8").replace('require("server-only");', ""));
 const alias = `${buildRoot}/node_modules/@/lib`;
 mkdirSync(alias, { recursive: true });
-writeFileSync(`${alias}/current-user.js`, "exports.getCurrentUser = async () => null;\n");
+writeFileSync(`${alias}/current-user.js`, "exports.getCurrentUser = async () => null; exports.isAccountDeactivated = user => user?.accountStatus === 'DEACTIVATED';\n");
 writeFileSync(`${alias}/db.js`, "exports.db = Object.freeze({ marker: 'application-db' });\n");
 writeFileSync(`${alias}/role-transitions.js`, [
   "exports.assignViewerAsOperator = async () => { throw new Error('default transition not expected'); };",

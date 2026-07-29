@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Role, type User } from "@prisma/client";
-import { getCurrentUser } from "@/lib/current-user";
+import { getCurrentUser, isAccountDeactivated } from "@/lib/current-user";
 import { db } from "@/lib/db";
 import {
   assignViewerAsOperator,
@@ -18,7 +18,7 @@ type Transition = (
 ) => Promise<RoleTransitionResult>;
 
 type Dependencies = {
-  getUser: () => Promise<Pick<User, "id" | "role"> | null>;
+  getUser: () => Promise<Pick<User, "id" | "role" | "accountStatus"> | null>;
   transition: Transition;
 };
 
@@ -103,6 +103,7 @@ export function createRoleTransitionHandler(
     try {
       const actor = await dependencies.getUser();
       if (!actor) return json({ error: "Authentication is required", code: "UNAUTHORIZED" }, 401);
+      if (isAccountDeactivated(actor)) return json({ error: "This account has been deactivated. Contact an administrator for assistance.", code: "ACCOUNT_DEACTIVATED" }, 403);
       if (actor.role !== Role.ADMIN) return json({ error: "Forbidden", code: "FORBIDDEN" }, 403);
 
       if (!validTargetId(params.id)) {

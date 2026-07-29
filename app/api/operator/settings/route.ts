@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/current-user";
+import { deactivatedAccountApiResponse, getCurrentUser } from "@/lib/current-user";
 import { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES, profileIsComplete } from "@/lib/marketplace";
 import { updateOperatorSettings, validateSettingsInput } from "@/lib/phase3-services";
 import { evaluateOperatorReadiness, publicDisplayName } from "@/lib/profiles";
@@ -10,6 +10,7 @@ export async function GET() {
  try {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
   if (user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const [profile, destinations, services] = await Promise.all([
     db.operatorProfile.findUnique({ where: { userId: user.id }, select: { operatingArea: true, serviceRadiusKm: true, supportsCustom: true, languages: true, accessibilityCapabilities: true, durationOptions: true, pilotStatus: true } }),
@@ -28,6 +29,7 @@ export async function PUT(req: NextRequest) {
  try {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+  const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
   if (user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const input = validateSettingsInput(await req.json());
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: input.status });

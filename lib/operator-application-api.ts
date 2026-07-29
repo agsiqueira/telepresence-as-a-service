@@ -2,7 +2,7 @@ import "server-only";
 
 import { OperatorApplicationStatus, Role, type User } from "@prisma/client";
 import { db } from "./db";
-import { getCurrentUser } from "./current-user";
+import { getCurrentUser, isAccountDeactivated } from "./current-user";
 import {
   OPERATOR_APPLICATION_MAX_LIMIT,
   getAdminOperatorApplication,
@@ -15,7 +15,7 @@ import {
   type OperatorApplicationFailureCode,
 } from "./operator-applications";
 
-type CurrentUser = Pick<User, "id" | "role">;
+type CurrentUser = Pick<User, "id" | "role" | "accountStatus">;
 type GetUser = () => Promise<CurrentUser | null>;
 type Operation = "viewer-list" | "viewer-submit" | "viewer-withdraw" | "admin-list" | "admin-detail" | "admin-review";
 type RouteContext = { params: { id?: string } };
@@ -99,6 +99,7 @@ function routeFailure(operation: Operation, applicationId: string | undefined, e
 
 function authorize(user: CurrentUser | null, role: Role) {
   if (!user) return ownFailure("Authentication is required", "UNAUTHENTICATED", 401);
+  if (isAccountDeactivated(user)) return ownFailure("This account has been deactivated. Contact an administrator for assistance.", "ACCOUNT_DEACTIVATED", 403);
   if (user.role !== role) return ownFailure("Forbidden", "FORBIDDEN", 403);
   return null;
 }
