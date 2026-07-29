@@ -4,6 +4,7 @@ const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "
 // These authenticated bootstrap APIs enforce identity in their handlers so they can
 // always return JSON (including 401/503) instead of Clerk's HTML middleware response.
 const isViewerBootstrapApi = createRouteMatcher([
+  "/api/access-state",
   "/api/destinations",
   "/api/trips/current",
   "/api/trips/history",

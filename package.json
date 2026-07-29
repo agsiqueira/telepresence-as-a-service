@@ -54,6 +54,7 @@
     "test:phase5e2:three-role": "node scripts/validate-phase5e2-three-role.mjs",
     "test:phase5e2b:api": "node scripts/validate-phase5e2b-api.mjs",
     "test:phase5e2b:ui": "node scripts/validate-phase5e2b-ui.mjs",
+    "test:access-state": "node scripts/validate-access-state-sync.mjs",
     "test:phase5e2:db": "node scripts/run-phase5e2-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"

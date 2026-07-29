@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import Link from "next/link";
+import AccessStateSynchronizer from "@/components/AccessStateSynchronizer";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,6 +19,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body>
+          <SignedIn><AccessStateSynchronizer /></SignedIn>
           <header className="bg-spartan-green text-white px-4 py-3 flex items-center justify-between">
             <Link href="/" className="font-semibold text-lg">
               VirtualTrip
