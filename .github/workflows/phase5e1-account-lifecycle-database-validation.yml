@@ -1,0 +1,83 @@
+name: Phase 5E.1 account lifecycle database validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase5e1-database:
+    name: Guarded Phase 5E.1 PostgreSQL suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: phase5e1_test
+          POSTGRES_PASSWORD: phase5e1_ephemeral_password
+          POSTGRES_DB: phase5e1_disposable
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U phase5e1_test -d phase5e1_disposable"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PHASE5E1_TEST_DATABASE_URL: postgresql://phase5e1_test:phase5e1_ephemeral_password@127.0.0.1:5432/phase5e1_disposable
+      PHASE5E1_CONFIRM_DISPOSABLE_DATABASE: YES_DELETE_PHASE5E1_TEST_DATA
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Create and verify disposable database fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          fingerprint="phase5e1-gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-$(cat /proc/sys/kernel/random/uuid)"
+          if (( ${#fingerprint} < 16 || ${#fingerprint} > 128 )); then
+            echo "Generated fingerprint has an invalid length." >&2
+            exit 1
+          fi
+          printf "COMMENT ON DATABASE phase5e1_disposable IS '%s';\n" "$fingerprint" |
+            docker exec --interactive "${{ job.services.postgres.id }}" \
+              psql --username phase5e1_test --dbname phase5e1_disposable --set ON_ERROR_STOP=1
+          observed="$(docker exec "${{ job.services.postgres.id }}" \
+            psql --username phase5e1_test --dbname phase5e1_disposable --tuples-only --no-align --set ON_ERROR_STOP=1 \
+            --command "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = current_database();")"
+          if [[ "$observed" != "$fingerprint" ]]; then
+            echo "Disposable database fingerprint verification failed." >&2
+            exit 1
+          fi
+          echo "PHASE5E1_EXPECTED_DATABASE_FINGERPRINT=$fingerprint" >> "$GITHUB_ENV"
+
+      - name: Run guarded Phase 5E.1 database suite
+        run: npm run test:phase5e1:db
+
+      - name: Verify Phase 5E.1 schema cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          remaining="$(docker exec "${{ job.services.postgres.id }}" \
+            psql --username phase5e1_test --dbname phase5e1_disposable --tuples-only --no-align --set ON_ERROR_STOP=1 \
+            --command "SELECT COUNT(*) FROM pg_namespace WHERE nspname IN ('phase5e1_full_validation', 'phase5e1_incremental_validation');")"
+          if [[ "$remaining" != "0" ]]; then
+            echo "Phase 5E.1 cleanup verification failed: $remaining validation schema(s) remain." >&2
+            exit 1
+          fi
+          echo "Phase 5E.1 validation-schema cleanup verified."

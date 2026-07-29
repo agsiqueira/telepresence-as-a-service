@@ -40,6 +40,10 @@
     "test:phase5d:viewer-ui": "node scripts/validate-phase5d-viewer-ui.mjs",
     "test:phase5d:admin-ui": "node scripts/validate-phase5d-admin-ui.mjs",
     "test:phase5d:db": "node scripts/run-phase5d-db-tests.mjs",
+    "test:phase5e1:schema": "node scripts/validate-phase5e1-schema.mjs",
+    "test:phase5e1:services": "node scripts/validate-phase5e1-services.mjs",
+    "test:phase5e1:harness": "node scripts/validate-phase5e1-harness.mjs",
+    "test:phase5e1:db": "node scripts/run-phase5e1-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"
   },

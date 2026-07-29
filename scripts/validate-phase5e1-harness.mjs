@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+const runner = readFileSync("scripts/run-phase5e1-db-tests.mjs", "utf8");
+const preflight = readFileSync("scripts/phase5e1-db-preflight.ts", "utf8");
+const control = readFileSync("scripts/phase5e1-schema-control.ts", "utf8");
+for (const pattern of [/PHASE5E1_TEST_DATABASE_URL/, /YES_DELETE_PHASE5E1_TEST_DATA/, /PHASE5E1_EXPECTED_DATABASE_FINGERPRINT/, /process\.env\[name\] === process\.env\.PHASE5E1_TEST_DATABASE_URL/]) assert.match(runner, pattern);
+assert.ok(runner.indexOf("phase5e1-db-preflight.js") < runner.indexOf("PHASE5E1_SCHEMA_ACTION"));
+assert.match(preflight, /shobj_description/); assert.doesNotMatch(preflight, /console\.(?:log|error)\([^)]*(?:DATABASE_URL|connection|stringify)/);
+assert.match(runner, /20260728230000_phase5e1a_account_lifecycle/); assert.match(runner, /migrate", "diff"/); assert.match(runner, /finally/); assert.match(control, /DROP SCHEMA IF EXISTS/); assert.match(control, /cleanup verification failed/i);
+const env = { ...process.env }; for (const key of ["PHASE5E1_TEST_DATABASE_URL", "PHASE5E1_CONFIRM_DISPOSABLE_DATABASE", "PHASE5E1_EXPECTED_DATABASE_FINGERPRINT"]) delete env[key];
+const refusal = spawnSync(process.execPath, ["scripts/run-phase5e1-db-tests.mjs"], { env, encoding: "utf8" }); assert.equal(refusal.status, 2);
+console.log("Phase 5E.1A disposable database harness safety assertions passed without a connection.");

@@ -13,6 +13,16 @@ enum Role {
   VIEWER
 }
 
+enum AccountStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum AccountLifecycleAction {
+  DEACTIVATE
+  REACTIVATE
+}
+
 enum OperatorPilotStatus {
   PENDING
   APPROVED
@@ -50,32 +60,54 @@ enum OfferStatus {
 }
 
 model User {
-  id                       String   @id @default(cuid())
-  clerkId                  String   @unique
+  id                       String        @id @default(cuid())
+  clerkId                  String        @unique
   name                     String?
   preferredLanguage        String?
-  accessibilityPreferences String[] @default([])
-  role                     Role     @default(VIEWER)
-  online                   Boolean  @default(false) // operator's "go online" toggle
+  accessibilityPreferences String[]      @default([])
+  role                     Role          @default(VIEWER)
+  accountStatus            AccountStatus @default(ACTIVE)
+  deactivatedAt            DateTime?
+  online                   Boolean       @default(false) // operator's "go online" toggle
   // Internal marketplace reservations claimed inside serializable transactions.
   pendingOfferTripId       String?
   activeTripId             String?
-  createdAt                DateTime @default(now())
+  createdAt                DateTime      @default(now())
 
-  tripsAsViewer        Trip[]                 @relation("TripsAsViewer")
-  tripsAsOperator      Trip[]                 @relation("TripsAsOperator")
-  feedback             Feedback[]
-  operatorProfile      OperatorProfile?
-  destinationServices  OperatorDestination[]
-  offers               TripOffer[]            @relation("OperatorOffers")
-  offeredTrips         Trip[]                 @relation("OfferedOperator")
-  roleChangesPerformed AdminRoleChangeAudit[] @relation("AdminRoleChangeActor")
-  roleChangesReceived  AdminRoleChangeAudit[] @relation("AdminRoleChangeTarget")
-  operatorApplications OperatorApplication[]  @relation("OperatorApplicationApplicant")
-  applicationsReviewed OperatorApplication[]  @relation("OperatorApplicationReviewer")
+  tripsAsViewer           Trip[]                  @relation("TripsAsViewer")
+  tripsAsOperator         Trip[]                  @relation("TripsAsOperator")
+  feedback                Feedback[]
+  operatorProfile         OperatorProfile?
+  destinationServices     OperatorDestination[]
+  offers                  TripOffer[]             @relation("OperatorOffers")
+  offeredTrips            Trip[]                  @relation("OfferedOperator")
+  roleChangesPerformed    AdminRoleChangeAudit[]  @relation("AdminRoleChangeActor")
+  roleChangesReceived     AdminRoleChangeAudit[]  @relation("AdminRoleChangeTarget")
+  operatorApplications    OperatorApplication[]   @relation("OperatorApplicationApplicant")
+  applicationsReviewed    OperatorApplication[]   @relation("OperatorApplicationReviewer")
+  accountLifecycleActions AccountLifecycleAudit[] @relation("AccountLifecycleActor")
+  accountLifecycleHistory AccountLifecycleAudit[] @relation("AccountLifecycleTarget")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
+  @@index([accountStatus, role])
+}
+
+model AccountLifecycleAudit {
+  id             String                 @id @default(cuid())
+  actor          User                   @relation("AccountLifecycleActor", fields: [actorId], references: [id], onDelete: Restrict)
+  actorId        String
+  target         User                   @relation("AccountLifecycleTarget", fields: [targetId], references: [id], onDelete: Restrict)
+  targetId       String
+  action         AccountLifecycleAction
+  previousStatus AccountStatus
+  newStatus      AccountStatus
+  reason         String
+  createdAt      DateTime               @default(now())
+
+  @@index([targetId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }
 
 model OperatorApplication {

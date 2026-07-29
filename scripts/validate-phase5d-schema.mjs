@@ -44,6 +44,6 @@ for (const constraint of ["OperatorApplication_applicantId_fkey", "OperatorAppli
 }
 
 assert.ok(migrations.indexOf(migrationName) > migrations.indexOf("20260728120000_phase5c_admin_role_audit"));
-assert.equal(migrations.at(-1), migrationName);
+assert.ok(migrations.indexOf("20260728230000_phase5e1a_account_lifecycle") > migrations.indexOf(migrationName));
 
 console.log("Phase 5D.1 Operator Application schema and migration assertions passed without a database connection.");
