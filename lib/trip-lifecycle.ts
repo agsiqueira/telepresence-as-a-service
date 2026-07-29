@@ -28,9 +28,9 @@ function ownsTrip(
   actorId: string,
   role: Role
 ) {
-  return role === Role.VIEWER
-    ? trip.viewerId === actorId
-    : trip.operatorId === actorId;
+  if (role === Role.VIEWER) return trip.viewerId === actorId;
+  if (role === Role.OPERATOR) return trip.operatorId === actorId;
+  return false;
 }
 
 export async function startTrip(

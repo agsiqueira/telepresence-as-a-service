@@ -29,5 +29,7 @@ assert.match(migration, /char_length\(btrim\("reason"\)\) BETWEEN 1 AND 500/);
 assert.match(migration, /AccountLifecycleAudit_transition_check/);
 assert.equal((migration.match(/ON DELETE RESTRICT ON UPDATE CASCADE/g) ?? []).length, 2);
 assert.doesNotMatch(migration, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE/);
-assert.equal(migrations.at(-1), migrationName);
+assert.ok(migrations.includes(migrationName));
+assert.equal(migrations.at(-1), "20260729010000_phase5e2a_administrator_governance");
+assert.ok(migrations.indexOf(migrations.at(-1)) > migrations.indexOf(migrationName));
 console.log("Phase 5E.1A account lifecycle schema assertions passed.");

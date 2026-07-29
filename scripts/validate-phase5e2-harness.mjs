@@ -1,0 +1,9 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+const runner = readFileSync("scripts/run-phase5e2-db-tests.mjs", "utf8"), preflight = readFileSync("scripts/phase5e2-db-preflight.ts", "utf8"), control = readFileSync("scripts/phase5e2-schema-control.ts", "utf8"), workflow = readFileSync(".github/workflows/phase5e2-administrator-governance-database-validation.yml", "utf8");
+for (const pattern of [/PHASE5E2_TEST_DATABASE_URL/, /YES_DELETE_PHASE5E2_TEST_DATA/, /PHASE5E2_EXPECTED_DATABASE_FINGERPRINT/, /STAGING_DATABASE_URL/, /process\.env\[name\] === process\.env\.PHASE5E2_TEST_DATABASE_URL/]) assert.match(runner, pattern);
+assert.ok(runner.indexOf("phase5e2-db-preflight.js") < runner.indexOf("PHASE5E2_SCHEMA_ACTION")); assert.match(runner, /20260729010000_phase5e2a_administrator_governance/); assert.match(runner, /migrate", "diff"/); assert.match(runner, /finally/); assert.match(preflight, /shobj_description/); assert.match(control, /phase5e2_full_validation/); assert.match(control, /phase5e2_incremental_validation/); assert.match(control, /DROP SCHEMA IF EXISTS/);
+for (const pattern of [/workflow_dispatch/, /contents: read/, /postgres:16-alpine/, /node-version: 24/, /npm ci/, /npm run test:phase5e2:db/, /if: always\(\)/, /phase5e2_full_validation/, /phase5e2_incremental_validation/, /shobj_description/]) assert.match(workflow, pattern); assert.doesNotMatch(workflow, /secrets\.|upload-artifact|^\s+DATABASE_URL:/m);
+const env = { ...process.env }; for (const key of ["PHASE5E2_TEST_DATABASE_URL", "PHASE5E2_CONFIRM_DISPOSABLE_DATABASE", "PHASE5E2_EXPECTED_DATABASE_FINGERPRINT"]) delete env[key]; const refusal = spawnSync(process.execPath, ["scripts/run-phase5e2-db-tests.mjs"], { env, encoding: "utf8" }); assert.equal(refusal.status, 2);
+console.log("Phase 5E.2A disposable database harness safety assertions passed without a connection.");

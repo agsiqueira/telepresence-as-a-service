@@ -47,6 +47,12 @@
     "test:phase5e1b:auth": "node scripts/validate-phase5e1b-auth.mjs",
     "test:phase5e1b:api": "node scripts/validate-phase5e1b-api.mjs",
     "test:phase5e1b:ui": "node scripts/validate-phase5e1b-ui.mjs",
+    "test:phase5e2:schema": "node scripts/validate-phase5e2-schema.mjs",
+    "test:phase5e2:services": "node scripts/validate-phase5e2-services.mjs",
+    "test:phase5e2:harness": "node scripts/validate-phase5e2-harness.mjs",
+    "test:phase5e2:bootstrap": "node scripts/validate-phase5e2-bootstrap.mjs",
+    "test:phase5e2:three-role": "node scripts/validate-phase5e2-three-role.mjs",
+    "test:phase5e2:db": "node scripts/run-phase5e2-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"
   },

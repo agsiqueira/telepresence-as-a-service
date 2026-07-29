@@ -32,6 +32,8 @@ enum OperatorPilotStatus {
 enum AdminRoleChangeAction {
   ASSIGN_OPERATOR
   RETURN_TO_VIEWER
+  ASSIGN_ADMIN
+  REMOVE_ADMIN
 }
 
 enum OperatorApplicationStatus {
@@ -143,10 +145,12 @@ model AdminRoleChangeAudit {
   action       AdminRoleChangeAction
   previousRole Role
   newRole      Role
+  reason       String?
   createdAt    DateTime              @default(now())
 
   @@index([targetId, createdAt])
   @@index([actorId, createdAt])
+  @@index([action, createdAt])
 }
 
 model Destination {

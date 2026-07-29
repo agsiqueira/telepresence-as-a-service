@@ -8,7 +8,7 @@ const migration = readFileSync(
 );
 const participantUi = readFileSync("components/AdminParticipants.tsx", "utf8");
 
-assert.match(schema, /enum AdminRoleChangeAction \{\s+ASSIGN_OPERATOR\s+RETURN_TO_VIEWER\s+\}/);
+assert.match(schema, /enum AdminRoleChangeAction \{\s+ASSIGN_OPERATOR\s+RETURN_TO_VIEWER\s+ASSIGN_ADMIN\s+REMOVE_ADMIN\s+\}/);
 assert.match(schema, /model AdminRoleChangeAudit \{/);
 assert.match(schema, /actor\s+User\s+@relation\("AdminRoleChangeActor", fields: \[actorId\], references: \[id\], onDelete: Restrict\)/);
 assert.match(schema, /target\s+User\s+@relation\("AdminRoleChangeTarget", fields: \[targetId\], references: \[id\], onDelete: Restrict\)/);

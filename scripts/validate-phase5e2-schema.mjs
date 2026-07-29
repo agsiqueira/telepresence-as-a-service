@@ -1,0 +1,9 @@
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+const schema = readFileSync("prisma/schema.prisma", "utf8"), migrationName = "20260729010000_phase5e2a_administrator_governance", migration = readFileSync(`prisma/migrations/${migrationName}/migration.sql`, "utf8");
+assert.match(schema, /enum AdminRoleChangeAction\s*{[\s\S]*ASSIGN_OPERATOR[\s\S]*RETURN_TO_VIEWER[\s\S]*ASSIGN_ADMIN[\s\S]*REMOVE_ADMIN[\s\S]*}/);
+assert.match(schema, /model AdminRoleChangeAudit[\s\S]*reason\s+String\?[\s\S]*@@index\(\[action, createdAt\]\)/);
+for (const value of ["ASSIGN_ADMIN", "REMOVE_ADMIN"]) assert.match(migration, new RegExp(`ADD VALUE '${value}'`));
+assert.match(migration, /ADD COLUMN "reason" TEXT/); assert.match(migration, /AdminRoleChangeAudit_transition_check/); assert.match(migration, /AdminRoleChangeAudit_governance_reason_check/); assert.match(migration, /"previousRole" IN \('VIEWER', 'OPERATOR'\)/); assert.match(migration, /char_length\("reason"\) BETWEEN 1 AND 500/); assert.match(migration, /"reason" = btrim\("reason"\)/); assert.match(migration, /AdminRoleChangeAudit_action_createdAt_idx/);
+assert.doesNotMatch(migration, /DROP TABLE|DROP COLUMN|DELETE FROM|TRUNCATE|CREATE TRIGGER/); assert.equal(readdirSync("prisma/migrations", { withFileTypes: true }).filter(value => value.isDirectory()).map(value => value.name).sort().at(-1), migrationName);
+console.log("Phase 5E.2A administrator-governance schema assertions passed.");

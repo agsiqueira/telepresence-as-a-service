@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
+    if (user.role !== Role.VIEWER && user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const requested = Number(new URL(req.url).searchParams.get("limit") ?? 25);
     const limit = Number.isInteger(requested) ? Math.max(1, Math.min(requested, 50)) : 25;
     const history = user.role === Role.VIEWER

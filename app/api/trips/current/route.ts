@@ -19,6 +19,7 @@ export async function GET() {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
+    if (user.role !== Role.VIEWER && user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const trip = await db.trip.findFirst({
       where: user.role === Role.VIEWER
         ? { viewerId: user.id, status: { in: ACTIVE } }
