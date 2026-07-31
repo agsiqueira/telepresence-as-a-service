@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { Role, TripStatus } from "@prisma/client";
+import { TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
-import { deactivatedAccountApiResponse, getCurrentUser } from "@/lib/current-user";
+import { authorizeExplorerApi } from "@/lib/current-user";
+import { canAccessTeleporterObligation, hasTeleporterCapability } from "@/lib/capabilities";
 
 const ACTIVE = [TripStatus.REQUESTED, TripStatus.OFFERED, TripStatus.ACCEPTED, TripStatus.IN_PROGRESS];
 const SELECT = {
@@ -10,23 +11,23 @@ const SELECT = {
   status: true,
   acceptedAt: true,
   startedAt: true,
+  operatorId: true,
   offeredOperatorId: true,
   offerExpiresAt: true,
 } as const;
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-    const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
-    if (user.role !== Role.VIEWER && user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const access = await authorizeExplorerApi(); if (!access.ok) return access.response; const user = access.user;
+    const teleporterView = new URL(req.url).searchParams.get("as") === "teleporter";
     const trip = await db.trip.findFirst({
-      where: user.role === Role.VIEWER
-        ? { viewerId: user.id, status: { in: ACTIVE } }
-        : { operatorId: user.id, status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] } },
+      where: teleporterView
+        ? { operatorId: user.id, status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] } }
+        : { viewerId: user.id, status: { in: ACTIVE } },
       orderBy: { requestedAt: "desc" },
       select: SELECT,
     });
+    if (teleporterView && !hasTeleporterCapability(user) && !canAccessTeleporterObligation(user, trip)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     return NextResponse.json({
       trip: trip ? {
         id: trip.id,

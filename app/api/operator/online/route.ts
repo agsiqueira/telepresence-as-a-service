@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { db } from "@/lib/db";
-import { deactivatedAccountApiResponse, getCurrentUser } from "@/lib/current-user";
+import { authorizeTeleporterActivityApi } from "@/lib/current-user";
 import { evaluateOperatorReadiness } from "@/lib/profiles";
 
 export async function POST(req: NextRequest) {
  try {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-  const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
-  if (user.role !== Role.OPERATOR) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await authorizeTeleporterActivityApi(); if (!access.ok) return access.response; const user = access.user;
 
   const body = await req.json();
   if (!body || typeof body !== "object" || Object.keys(body).some(key => key !== "online") || typeof body.online !== "boolean") return NextResponse.json({ error: "Online status is required" }, { status: 400 });

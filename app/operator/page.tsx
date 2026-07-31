@@ -98,7 +98,7 @@ export default function OperatorPage() {
 
   useEffect(() => {
     const currentRequest = new AbortController();
-    void fetch("/api/trips/current", { cache: "no-store", signal: currentRequest.signal })
+    void fetch("/api/trips/current?as=teleporter", { cache: "no-store", signal: currentRequest.signal })
       .then(response => requireJsonResponse<{ trip: Trip | null }>(response))
       .then(data => {
         if (data.trip) {
@@ -175,7 +175,7 @@ export default function OperatorPage() {
 
   useEffect(() => {
     if (activeTrip) return;
-    void fetch("/api/trips/history?limit=10", { cache: "no-store" })
+    void fetch("/api/trips/history?as=teleporter&limit=10", { cache: "no-store" })
       .then(response => requireJsonResponse<{ history: OperatorHistory[] }>(response))
       .then(data => setHistory(data.history ?? []))
       .catch(() => setMessage("Unable to load recent visit history. Please retry."));

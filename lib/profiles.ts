@@ -49,7 +49,7 @@ export async function evaluateOperatorReadiness(db: PrismaClient, userId: string
       tripsAsOperator: { where: { status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] } }, select: { id: true }, take: 1 },
     },
   });
-  if (!user || user.role !== Role.OPERATOR || !user.operatorProfile) return { eligible: false, code: "INCOMPLETE_PROFILE", message: "Complete your operator profile before going online" };
+  if (!user || user.role === Role.ADMIN || !user.operatorProfile) return { eligible: false, code: "INCOMPLETE_PROFILE", message: "Complete your Teleporter profile before going online" };
   if (user.operatorProfile.pilotStatus === OperatorPilotStatus.PENDING) return { eligible: false, code: "AWAITING_APPROVAL", message: "Your profile is awaiting pilot approval" };
   if (user.operatorProfile.pilotStatus === OperatorPilotStatus.SUSPENDED) return { eligible: false, code: "SUSPENDED", message: "Your pilot participation is suspended" };
   if (user.pendingOfferTripId || user.activeTripId || user.tripsAsOperator.length) return { eligible: false, code: "ACTIVE_ASSIGNMENT", message: "Availability cannot change during an offer or active visit" };

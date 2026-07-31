@@ -2,24 +2,26 @@ import { auth } from "@clerk/nextjs/server";
 import { AccountStatus, Role, type User } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { canInitiateTeleporterActivity, hasExplorerCapability } from "@/lib/capabilities";
 
 export async function getCurrentUser() {
   const { userId } = auth();
   if (!userId) return null;
 
-  const existing = await db.user.findUnique({ where: { clerkId: userId } });
+  const existing = await db.user.findUnique({ where: { clerkId: userId }, include: { operatorProfile: true } });
   if (existing) return existing;
 
   return db.user.upsert({
     where: { clerkId: userId },
     update: {},
     create: { clerkId: userId, name: null },
+    include: { operatorProfile: true },
   });
 }
 
 export async function getCurrentPersistedUser() {
   const { userId } = auth();
-  return userId ? db.user.findUnique({ where: { clerkId: userId } }) : null;
+  return userId ? db.user.findUnique({ where: { clerkId: userId }, include: { operatorProfile: true } }) : null;
 }
 
 export async function requireCurrentUser() {
@@ -63,4 +65,20 @@ export async function authorizeApiUser(requiredRole?: Role) {
   if (inactive) return { ok: false as const, response: inactive };
   if (requiredRole && user.role !== requiredRole) return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   return { ok: true as const, user };
+}
+
+export async function authorizeExplorerApi() {
+  const access = await authorizeApiUser();
+  if (!access.ok) return access;
+  return hasExplorerCapability(access.user)
+    ? access
+    : { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+}
+
+export async function authorizeTeleporterActivityApi() {
+  const access = await authorizeApiUser();
+  if (!access.ok) return access;
+  return canInitiateTeleporterActivity(access.user)
+    ? access
+    : { ok: false as const, response: NextResponse.json({ error: "Approved Teleporter capability is required" }, { status: 403 }) };
 }

@@ -224,13 +224,13 @@ async function main() {
       assert.equal((await db.trip.findUniqueOrThrow({ where: { id: trip.id } })).operatorId, assigned.id);
 
       clerkId = viewer.clerkId;
-      const current = await currentRoute.GET(); assert.equal(current.status, 200); const currentBody = await current.json(); assert.equal(currentBody.trip.id, trip.id); assert.ok(!JSON.stringify(currentBody).includes("livekitRoom"));
+      const current = await currentRoute.GET(new Request("http://test/api/trips/current")); assert.equal(current.status, 200); const currentBody = await current.json(); assert.equal(currentBody.trip.id, trip.id); assert.ok(!JSON.stringify(currentBody).includes("livekitRoom"));
       const viewerHistory = await historyRoute.GET(new Request("http://test/api/trips/history?limit=10") as never); assert.equal(viewerHistory.status, 200); assert.ok((await viewerHistory.json()).history.some((value: { id: string }) => value.id === trip.id));
       const stranger = await user(Role.VIEWER); clerkId = stranger.clerkId; assert.equal((await startRoute.POST(new Request("http://test") as never, { params: { id: trip.id } })).status, 404);
 
       clerkId = assigned.clerkId;
       assert.equal((await startRoute.POST(new Request("http://test") as never, { params: { id: trip.id } })).status, 200);
-      const operatorHistory = await historyRoute.GET(new Request("http://test/api/trips/history") as never); assert.equal(operatorHistory.status, 200); const operatorHistoryBody = await operatorHistory.json(); assert.ok(operatorHistoryBody.history.some((value: { trip: { id: string } }) => value.trip.id === trip.id));
+      const operatorHistory = await historyRoute.GET(new Request("http://test/api/trips/history?as=teleporter") as never); assert.equal(operatorHistory.status, 200); const operatorHistoryBody = await operatorHistory.json(); assert.ok(operatorHistoryBody.history.some((value: { trip: { id: string } }) => value.trip.id === trip.id));
       const phase4Serialized = JSON.stringify(operatorHistoryBody); for (const field of ["clerkId", "lat", "lng", "livekitRoom", "viewerId", "operatorId"]) assert.ok(!phase4Serialized.includes(`"${field}"`));
       assert.equal((await retryRoute.POST(new Request("http://test") as never, { params: { id: trip.id } })).status, 403);
       assert.equal((await skipRoute.POST(new Request("http://test", { method: "POST", body: JSON.stringify({ tripId: trip.id }) }) as never)).status, 403);

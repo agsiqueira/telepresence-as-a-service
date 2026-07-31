@@ -4,7 +4,6 @@ import {
   OfferStatus,
   OperatorPilotStatus,
   Prisma,
-  Role,
   TripStatus,
   type Destination,
   type OperatorProfile,
@@ -66,7 +65,7 @@ type TripForMatching = {
 function eligibleOperatorWhere(trip: TripForMatching): Prisma.UserWhereInput {
   const custom = Boolean(trip.customDestination || trip.destinationRef?.custom);
   return {
-    role: Role.OPERATOR,
+    accountStatus: "ACTIVE",
     name: { not: null },
     online: true,
     operatorProfile: {
@@ -126,6 +125,7 @@ export async function assignNextOperator(
         online: true,
         pendingOfferTripId: null,
         activeTripId: null,
+        accountStatus: "ACTIVE",
         operatorProfile: { is: { pilotStatus: OperatorPilotStatus.APPROVED } },
       },
       data: { pendingOfferTripId: trip.id },

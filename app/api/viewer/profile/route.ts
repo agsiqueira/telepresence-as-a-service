@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { deactivatedAccountApiResponse, getCurrentUser } from "@/lib/current-user";
+import { hasExplorerCapability } from "@/lib/capabilities";
 import { db } from "@/lib/db";
 import { publicDisplayName, validateViewerProfile } from "@/lib/profiles";
 
@@ -11,7 +11,7 @@ export async function GET() {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
-    if (user.role !== Role.VIEWER) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!hasExplorerCapability(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const profile = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: projection });
     return NextResponse.json({ profile: { displayName: publicDisplayName(profile.name), preferredLanguage: profile.preferredLanguage, accessibilityPreferences: profile.accessibilityPreferences } });
   } catch (error) {
@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
     const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
-    if (user.role !== Role.VIEWER) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!hasExplorerCapability(user)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const input = validateViewerProfile(await req.json());
     if (!input.ok) return NextResponse.json({ error: input.error }, { status: input.status });
     const profile = await db.user.update({ where: { id: user.id }, data: { name: input.value.displayName, preferredLanguage: input.value.preferredLanguage, accessibilityPreferences: input.value.accessibilityPreferences }, select: projection });

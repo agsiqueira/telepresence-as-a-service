@@ -71,11 +71,11 @@ export async function createTripRequest(
     return await runSerializable(db, async tx => {
       const participant = await tx.user.findUnique({
         where: { id: viewerId },
-        select: { role: true },
+        select: { role: true, accountStatus: true },
       });
       if (!participant) return { ok: false, status: 404, error: "Viewer not found" } as const;
-      if (participant.role !== Role.VIEWER) {
-        return conflict("Participant is no longer a Viewer");
+      if (participant.role === Role.ADMIN || participant.accountStatus !== "ACTIVE") {
+        return conflict("Participant does not have Explorer capability");
       }
 
       const existing = await tx.trip.findFirst({
@@ -149,7 +149,7 @@ export async function acceptTripOffer(db: Database, operatorId: string, tripId: 
         return conflict("Offer is no longer available");
       }
       const operator = await tx.user.updateMany({
-        where: { id: operatorId, role: Role.OPERATOR, online: true, pendingOfferTripId: tripId, activeTripId: null },
+        where: { id: operatorId, accountStatus: "ACTIVE", online: true, pendingOfferTripId: tripId, activeTripId: null, operatorProfile: { is: { pilotStatus: "APPROVED" } } },
         data: { pendingOfferTripId: null, activeTripId: tripId },
       });
       if (operator.count !== 1) return conflict("Offer is no longer available");
@@ -214,7 +214,7 @@ export async function updateOperatorSettings(db: Database, operatorId: string, i
       const validDestinations = await tx.destination.count({ where: { id: { in: destinationIds.filter(id => !allowedInactiveIds.includes(id)) }, active: true, custom: false, city: { equals: input.operatingArea, mode: "insensitive" } } });
       if (!validArea || validDestinations + allowedInactiveIds.length !== destinationIds.length) return { ok: false, status: 400, error: "One or more destinations are unavailable" } as const;
       const available = await tx.user.updateMany({
-        where: { id: operatorId, role: Role.OPERATOR, pendingOfferTripId: null, activeTripId: null },
+        where: { id: operatorId, accountStatus: "ACTIVE", pendingOfferTripId: null, activeTripId: null, operatorProfile: { is: { pilotStatus: "APPROVED" } } },
         data: { online: false },
       });
       if (available.count !== 1) return conflict("Service settings cannot change during an offer or active visit");

@@ -9,11 +9,13 @@ const TRANSIENT_MESSAGE_KEY = "virtualtrip-access-state-message";
 function validState(value: unknown): value is SafeAccessState {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const state = value as Record<string, unknown>;
-  return ["VIEWER", "OPERATOR", "ADMIN"].includes(String(state.role)) && ["ACTIVE", "DEACTIVATED"].includes(String(state.accountStatus)) && typeof state.updatedAt === "string" && !Number.isNaN(Date.parse(state.updatedAt));
+  return ["VIEWER", "OPERATOR", "ADMIN"].includes(String(state.role)) && ["ACTIVE", "DEACTIVATED"].includes(String(state.accountStatus)) && typeof state.explorer === "boolean" && typeof state.teleporter === "boolean" && typeof state.teleporterObligation === "boolean" && typeof state.updatedAt === "string" && !Number.isNaN(Date.parse(state.updatedAt));
 }
 
-function routeMatchesRole(pathname: string, role: SafeAccessState["role"]) {
-  return pathname === accessStateDestinations[role] || pathname.startsWith(`${role === "ADMIN" ? "/admin" : accessStateDestinations[role]}/`);
+function routeMatchesCapabilities(pathname: string, state: SafeAccessState) {
+  if (state.role === "ADMIN") return pathname === "/admin" || pathname.startsWith("/admin/");
+  if (state.explorer && (pathname === "/viewer" || pathname.startsWith("/viewer/"))) return true;
+  return (state.teleporter || state.teleporterObligation) && (pathname === "/operator" || pathname.startsWith("/operator/"));
 }
 
 function setProtectedContentInert(blocked: boolean) {
@@ -40,8 +42,8 @@ export default function AccessStateSynchronizer() {
         const serialized = serializeAccessStateMessage(notification); if (!serialized) return;
         sessionStorage.setItem(TRANSIENT_MESSAGE_KEY, serialized); setMessage(notification);
         if (next.accountStatus === "DEACTIVATED") { setBlocking(true); setProtectedContentInert(true); router.replace("/account-deactivated"); router.refresh(); return; }
-        const destination = accessStateDestinations[next.role];
-        if (pathname === "/account-deactivated" || !routeMatchesRole(pathname, next.role)) router.replace(destination);
+        const destination = next.role === "ADMIN" ? accessStateDestinations.ADMIN : "/viewer";
+        if (pathname === "/account-deactivated" || !routeMatchesCapabilities(pathname, next)) router.replace(destination);
         router.refresh();
       },
     });

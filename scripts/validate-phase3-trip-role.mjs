@@ -20,7 +20,7 @@ const { createTripRequest } = await import(`../${root}/phase3-services.js`);
 
 const input = { destinationId: "destination", requestedDuration: 30, accessibilityNeeds: [] };
 
-function database({ role = Role.VIEWER, missing = false, existing = false, conflictAfterFirstWork = false } = {}) {
+function database({ role = Role.VIEWER, accountStatus = "ACTIVE", missing = false, existing = false, conflictAfterFirstWork = false } = {}) {
   let committedTrips = existing ? [{ id: "existing", viewerId: "viewer", status: TripStatus.REQUESTED }] : [];
   let attempts = 0;
   let userReads = 0;
@@ -31,7 +31,7 @@ function database({ role = Role.VIEWER, missing = false, existing = false, confl
         attempts += 1;
         const draft = structuredClone(committedTrips);
         const tx = {
-          user: { findUnique: async ({ where }) => { userReads += 1; return missing || where.id !== "viewer" ? null : { role }; } },
+          user: { findUnique: async ({ where }) => { userReads += 1; return missing || where.id !== "viewer" ? null : { role, accountStatus }; } },
           trip: {
             findFirst: async ({ where }) => draft.find(trip => trip.viewerId === where.viewerId && where.status.in.includes(trip.status)) ?? null,
             create: async ({ data }) => { inserts += 1; const trip = { id: `trip-${attempts}`, status: TripStatus.REQUESTED, acceptedAt: null, offeredOperatorId: null, offerExpiresAt: null, ...data }; draft.push(trip); return trip; },
@@ -58,11 +58,12 @@ assert.equal(result.ok, true);
 assert.equal(mock.state().userReads, 1);
 assert.equal(mock.state().trips.length, 1);
 
-for (const role of [Role.OPERATOR, Role.ADMIN]) {
-  mock = database({ role });
-  result = await createTripRequest(mock.db, "viewer", input, () => "room");
-  assert.deepEqual(result, { ok: false, status: 409, error: "Participant is no longer a Viewer" });
-  assert.equal(mock.state().inserts, 0);
+mock = database({ role: Role.OPERATOR });
+result = await createTripRequest(mock.db, "viewer", input, () => "room");
+assert.equal(result.ok, true, "a legacy OPERATOR remains an Explorer");
+for (const options of [{ role: Role.ADMIN }, { role: Role.VIEWER, accountStatus: "DEACTIVATED" }]) {
+  mock = database(options); result = await createTripRequest(mock.db, "viewer", input, () => "room");
+  assert.deepEqual(result, { ok: false, status: 409, error: "Participant does not have Explorer capability" }); assert.equal(mock.state().inserts, 0);
 }
 
 mock = database({ missing: true });
@@ -85,7 +86,7 @@ assert.equal(mock.state().trips.length, 1, "the failed transaction attempt does 
 
 const source = readFileSync("lib/phase3-services.ts", "utf8");
 assert.match(source, /tx\.user\.findUnique/);
-assert.match(source, /participant\.role !== Role\.VIEWER/);
+assert.match(source, /participant\.role === Role\.ADMIN/);
 assert.ok(source.indexOf("tx.user.findUnique") < source.indexOf("tx.trip.create"));
 rmSync(".phase3-test-build", { recursive: true, force: true });
-console.log("Phase 3 transactional Viewer-role assertions passed.");
+console.log("Phase 3 transactional Explorer-capability assertions passed.");

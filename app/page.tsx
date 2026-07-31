@@ -9,9 +9,8 @@ export default async function HomePage() {
 
   if (user) {
     if (isAccountDeactivated(user)) redirect("/account-deactivated");
-    if (user.role === Role.VIEWER) redirect("/viewer");
-    if (user.role === Role.OPERATOR) redirect("/operator");
-    redirect("/admin/participants");
+    if (user.role === Role.ADMIN) redirect("/admin/participants");
+    redirect("/viewer");
   }
 
   return (

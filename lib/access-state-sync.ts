@@ -1,4 +1,4 @@
-export type SafeAccessState = { role: "VIEWER" | "OPERATOR" | "ADMIN"; accountStatus: "ACTIVE" | "DEACTIVATED"; updatedAt: string };
+export type SafeAccessState = { role: "VIEWER" | "OPERATOR" | "ADMIN"; accountStatus: "ACTIVE" | "DEACTIVATED"; explorer: boolean; teleporter: boolean; teleporterObligation: boolean; updatedAt: string };
 
 export const ACCESS_STATE_POLL_INTERVAL_MS = 15_000;
 export const ACCESS_STATE_MESSAGE_MAX_AGE_MS = 5 * 60_000;
@@ -28,10 +28,10 @@ export function parseAccessStateMessage(value: string | null, now = Date.now()) 
 export function accessStateChangeMessage(previous: SafeAccessState, next: SafeAccessState) {
   if (previous.accountStatus === "ACTIVE" && next.accountStatus === "DEACTIVATED") return accessStateMessages.DEACTIVATED;
   if (previous.accountStatus === "DEACTIVATED" && next.accountStatus === "ACTIVE") return accessStateMessages.REACTIVATED;
-  if (previous.role === "VIEWER" && next.role === "OPERATOR") return accessStateMessages.OPERATOR_APPROVED;
+  if (!previous.teleporter && next.teleporter) return accessStateMessages.OPERATOR_APPROVED;
   if ((previous.role === "VIEWER" || previous.role === "OPERATOR") && next.role === "ADMIN") return accessStateMessages.ADMIN_ASSIGNED;
   if (previous.role === "ADMIN" && next.role === "VIEWER") return accessStateMessages.ADMIN_REMOVED;
-  if (previous.role === "OPERATOR" && next.role === "VIEWER") return accessStateMessages.OPERATOR_REMOVED;
+  if (previous.teleporter && !next.teleporter) return accessStateMessages.OPERATOR_REMOVED;
   return null;
 }
 
@@ -58,7 +58,7 @@ export function createAccessStateSynchronizer(options: Options) {
       const next = await options.fetchState(request.signal);
       if (stopped) return;
       if (!current) current = next;
-      else if (current.role !== next.role || current.accountStatus !== next.accountStatus) {
+      else if (current.role !== next.role || current.accountStatus !== next.accountStatus || current.explorer !== next.explorer || current.teleporter !== next.teleporter || current.teleporterObligation !== next.teleporterObligation) {
         const previous = current; current = next;
         const message = accessStateChangeMessage(previous, next);
         if (message) await options.onChange(previous, next, message);

@@ -35,8 +35,8 @@ assert.match(services, /destination\.durationOptions\.includes\(input\.requested
 assert.match(services, /viewerNote\.length > 240/);
 assert.match(services, /isolationLevel: Prisma\.TransactionIsolationLevel\.Serializable/);
 assert.match(services, /tx\.user\.findUnique/);
-assert.match(services, /participant\.role !== Role\.VIEWER/);
-assert.match(settings, /user\.role !== Role\.OPERATOR/);
+assert.match(services, /participant\.role === Role\.ADMIN/);
+assert.match(settings, /!user\.operatorProfile/);
 assert.match(settings, /updateOperatorSettings\(db, user\.id/);
 assert.match(services, /pendingOfferTripId: null/);
 assert.match(services, /activeTripId: null/);

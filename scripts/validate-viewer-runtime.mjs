@@ -21,8 +21,8 @@ assert.match(viewer, /Unable to load visit history/);
 assert.doesNotMatch(viewer, /fetch\("\/api\/(destinations|trips\/current|trips\/history)[^\n]*\n\s*\.then\([^\n]*response\.json/);
 
 for (const route of [destinations, current, history]) {
-  assert.match(route, /getCurrentUser\(\)/);
-  assert.match(route, /NextResponse\.json\(\{ error: "Unauthenticated" \}, \{ status: 401 \}\)/);
+  assert.match(route, /getCurrentUser\(\)|authorizeExplorerApi\(\)/);
+  assert.match(route, /Unauthenticated|authorizeExplorerApi/);
   assert.match(route, /catch \(error\)/);
   assert.match(route, /status: 503/);
 }

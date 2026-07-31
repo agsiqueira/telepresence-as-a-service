@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Role, TripStatus } from "@prisma/client";
+import { TripStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { authorizeApiUser } from "@/lib/current-user";
 import { assignWaitingTrips, expireAndReassignOffers } from "@/lib/marketplace";
@@ -10,9 +10,8 @@ export async function GET(
 ) {
   const access = await authorizeApiUser(); if (!access.ok) return access.response; const user = access.user;
   let trip = await db.trip.findUnique({ where: { id: params.id } });
-  const isViewer = user.role === Role.VIEWER && trip?.viewerId === user.id;
-  const isOperator =
-    user.role === Role.OPERATOR && trip?.operatorId === user.id;
+  const isViewer = trip?.viewerId === user.id;
+  const isOperator = trip?.operatorId === user.id;
 
   if (!trip || (!isViewer && !isOperator)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

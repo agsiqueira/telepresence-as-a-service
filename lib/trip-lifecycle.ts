@@ -28,9 +28,8 @@ function ownsTrip(
   actorId: string,
   role: Role
 ) {
-  if (role === Role.VIEWER) return trip.viewerId === actorId;
-  if (role === Role.OPERATOR) return trip.operatorId === actorId;
-  return false;
+  void role; // Legacy caller perspective is retained while ownership is capability-based.
+  return trip.viewerId === actorId || trip.operatorId === actorId;
 }
 
 export async function startTrip(
@@ -71,12 +70,14 @@ export async function cancelTrip(
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip };
-      const viewerAllowed = role === Role.VIEWER && (
+      const actsAsViewer = trip.viewerId === actorId;
+      const actsAsOperator = trip.operatorId === actorId;
+      const viewerAllowed = actsAsViewer && (
         trip.status === TripStatus.REQUESTED ||
         trip.status === TripStatus.OFFERED ||
         trip.status === TripStatus.ACCEPTED
       );
-      const operatorAllowed = role === Role.OPERATOR && trip.status === TripStatus.ACCEPTED;
+      const operatorAllowed = actsAsOperator && trip.status === TripStatus.ACCEPTED;
       if (!viewerAllowed && !operatorAllowed) return conflict("Visit cannot be cancelled");
 
       const changed = await tx.trip.updateMany({
@@ -90,7 +91,7 @@ export async function cancelTrip(
         data: {
           status: TripStatus.CANCELLED,
           cancelledAt: now,
-          cancelledBy: role,
+          cancelledBy: actsAsViewer ? Role.VIEWER : Role.OPERATOR,
           offeredOperatorId: null,
           offerExpiresAt: null,
         },
