@@ -14,6 +14,7 @@
   "include": [
     "phase3-db-integration.ts",
     "phase4-db-integration.ts",
+    "phase34-db-concurrency.ts",
     "phase5a-db-integration.ts",
     "phase5b-db-integration.ts",
     "phase5c-db-integration.ts",

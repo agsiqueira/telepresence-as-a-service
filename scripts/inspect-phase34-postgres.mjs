@@ -1,0 +1,12 @@
+import { PrismaClient } from "@prisma/client";
+if (!process.env.PHASE3_TEST_DATABASE_URL || !process.env.PHASE4_TEST_DATABASE_URL) throw new Error("Both test database URLs are required; refusing to contact a database");
+if (process.env.PHASE3_TEST_DATABASE_URL !== process.env.PHASE4_TEST_DATABASE_URL) throw new Error("Test database URLs differ; refusing to contact a database");
+if (process.env.DATABASE_URL !== process.env.PHASE3_TEST_DATABASE_URL) throw new Error("Unsafe database mapping");
+const db = new PrismaClient();
+const migrations = await db.$queryRawUnsafe('SELECT migration_name, finished_at IS NOT NULL AS finished, rolled_back_at IS NOT NULL AS rolled_back FROM _prisma_migrations ORDER BY started_at');
+const constraints = await db.$queryRawUnsafe(`SELECT conrelid::regclass::text AS table_name, conname, contype, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid IN ('"Proposal"'::regclass,'"Agreement"'::regclass) ORDER BY 1,2`);
+const indexes = await db.$queryRawUnsafe(`SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename IN ('Proposal','Agreement','JourneyRequest','Trip') AND (indexname LIKE 'Proposal_%' OR indexname LIKE 'Agreement_%' OR indexname IN ('Trip_id_viewerId_operatorId_key','JourneyRequest_id_explorerId_key')) ORDER BY 1,2`);
+const enums = await db.$queryRawUnsafe(`SELECT t.typname AS enum_name,e.enumlabel,e.enumsortorder::float8 FROM pg_type t JOIN pg_enum e ON e.enumtypid=t.oid WHERE t.typname IN ('ProposalStatus','AgreementStatus') ORDER BY 1,3`);
+const triggers = await db.$queryRawUnsafe(`SELECT event_object_table AS table_name,trigger_name,event_manipulation,action_statement FROM information_schema.triggers WHERE trigger_schema='public' AND event_object_table IN ('Proposal','Agreement') ORDER BY 1,2,3`);
+console.log(JSON.stringify({ migrations, constraints, indexes, enums, triggers }, null, 2));
+await db.$disconnect();

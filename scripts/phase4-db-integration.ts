@@ -14,7 +14,7 @@ import {
   startTrip,
 } from "../lib/trip-lifecycle";
 
-if (!process.env.PHASE3_TEST_DATABASE_URL || process.env.DATABASE_URL !== process.env.PHASE3_TEST_DATABASE_URL) throw new Error("Unsafe database mapping");
+if (!process.env.PHASE3_TEST_DATABASE_URL || !process.env.PHASE4_TEST_DATABASE_URL || process.env.PHASE3_TEST_DATABASE_URL !== process.env.PHASE4_TEST_DATABASE_URL || process.env.DATABASE_URL !== process.env.PHASE3_TEST_DATABASE_URL) throw new Error("Unsafe database mapping");
 const db = new PrismaClient();
 const run = `p4-${randomUUID()}`;
 const serial = <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) => db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -207,9 +207,9 @@ async function main() {
       const viewerCatalog = await destinationsRoute.GET(); assert.equal(viewerCatalog.status, 200);
       const viewerCatalogBody = await viewerCatalog.json(); assert.ok(!viewerCatalogBody.destinations.some((value: { id: string }) => value.id === inactive.id));
       assert.deepEqual(Object.keys(viewerCatalogBody.destinations[0]).sort(), ["category", "city", "custom", "durationOptions", "id", "imageUrl", "meetingArea", "name", "shortDescription"].sort());
-      assert.equal((await offersRoute.GET()).status, 403);
+      assert.equal((await offersRoute.GET()).status, 403, "viewer offers authorization");
       const viewerSettings = new Request("http://test/api/operator/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId: assigned.id }) });
-      assert.equal((await settingsRoute.PUT(viewerSettings as never)).status, 403);
+      assert.equal((await settingsRoute.PUT(viewerSettings as never)).status, 403, "viewer settings authorization");
 
       clerkId = other.clerkId;
       const otherOffer = await offersRoute.GET(); assert.equal(otherOffer.status, 200); assert.equal((await otherOffer.json()).offer, null);
@@ -232,8 +232,8 @@ async function main() {
       assert.equal((await startRoute.POST(new Request("http://test") as never, { params: { id: trip.id } })).status, 200);
       const operatorHistory = await historyRoute.GET(new Request("http://test/api/trips/history?as=teleporter") as never); assert.equal(operatorHistory.status, 200); const operatorHistoryBody = await operatorHistory.json(); assert.ok(operatorHistoryBody.history.some((value: { trip: { id: string } }) => value.trip.id === trip.id));
       const phase4Serialized = JSON.stringify(operatorHistoryBody); for (const field of ["clerkId", "lat", "lng", "livekitRoom", "viewerId", "operatorId"]) assert.ok(!phase4Serialized.includes(`"${field}"`));
-      assert.equal((await retryRoute.POST(new Request("http://test") as never, { params: { id: trip.id } })).status, 403);
-      assert.equal((await skipRoute.POST(new Request("http://test", { method: "POST", body: JSON.stringify({ tripId: trip.id }) }) as never)).status, 403);
+      assert.equal((await retryRoute.POST(new Request("http://test") as never, { params: { id: trip.id } })).status, 404, "non-owner retry privacy");
+      assert.equal((await skipRoute.POST(new Request("http://test", { method: "POST", body: JSON.stringify({ tripId: trip.id }) }) as never)).status, 404, "non-owner skip privacy");
     } finally {
       if (cached) require.cache[clerkPath] = cached;
       else delete require.cache[clerkPath];
