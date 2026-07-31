@@ -60,6 +60,7 @@
     "../lib/marketplace-vocabulary.ts",
     "../lib/journey-requests.ts",
     "../lib/proposals.ts",
+    "../lib/agreements.ts",
     "../lib/role-transition-api.ts",
     "../lib/admin-role-ui.ts",
     "../app/api/destinations/route.ts",

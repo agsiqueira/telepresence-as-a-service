@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read=path=>readFileSync(path,"utf8"),schema=read("prisma/schema.prisma"),migration=read("prisma/migrations/20260731230000_phase4_atomic_agreements/migration.sql"),service=read("lib/agreements.ts");
+assert.match(schema,/enum ProposalStatus[\s\S]*ACCEPTED[\s\S]*NOT_SELECTED/);assert.match(schema,/enum AgreementStatus \{\s+CONFIRMED/);assert.match(schema,/model Agreement \{/);
+for(const field of ["journeyRequestId","proposalId","explorerId","teleporterId","tripId","agreedEarliestStart","agreedLatestStart","agreedDurationMinutes","agreedPriceMinor","currency","privateMeetingSnapshot","confirmedAt"])assert.match(schema,new RegExp(`\\b${field}\\b`));
+for(const invariant of ["Agreement_journeyRequestId_key","Agreement_proposalId_key","Agreement_tripId_key","Agreement_journeyRequest_owner_fkey","Agreement_proposal_owner_fkey","Agreement_trip_parties_fkey","Agreement_prevent_update","Agreement_prevent_delete"])assert.match(migration,new RegExp(invariant));
+assert.doesNotMatch(migration,/(?:UPDATE|DELETE FROM) "(?:JourneyRequest|Trip|User|OperatorProfile|OperatorApplication|Destination|Proposal)"/);assert.match(migration,/ALTER TYPE "ProposalStatus" ADD VALUE 'ACCEPTED'/);assert.match(migration,/ADD VALUE 'NOT_SELECTED'/);
+for(const pattern of [/TransactionIsolationLevel\.Serializable/,/FOR UPDATE/,/status: ProposalStatus\.ACCEPTED/,/status: ProposalStatus\.NOT_SELECTED/,/status: JourneyRequestStatus\.CONVERTED/,/tripId: trip\.id/,/status: TripStatus\.ACCEPTED/,/agreement\.create/,/activeTripId: tripId/,/created: false/])assert.match(service,pattern);
+assert.match(service,/request\.explorerId !== explorerId/);assert.match(service,/OperatorPilotStatus\.APPROVED/);assert.match(service,/AccountStatus\.ACTIVE/);assert.match(service,/proposal\.journeyRequestId !== requestId/);assert.match(service,/proposal\.validUntil <= now/);assert.match(service,/request\.expiresAt <= now/);
+assert.doesNotMatch(service,/assignNextOperator|TripStatus\.NO_OPERATOR_AVAILABLE|payment|refund|GuidedExperience|LiveMoment/i);
+for(const path of ["app/api/journey-requests/[id]/proposals/[proposalId]/accept/route.ts","app/api/journey-requests/[id]/agreement/route.ts"])assert.match(read(path),/authorizeExplorerApi/);
+for(const path of ["app/api/operator/agreements/route.ts","app/api/operator/agreements/[id]/route.ts"])assert.match(read(path),/authorizeExplorerApi/);
+assert.match(read("app/api/admin/agreements/route.ts"),/authorizeAdminApi/);assert.match(read("components/ReceivedProposals.tsx"),/Accept Proposal/);assert.match(read("components/AgreementConfirmation.tsx"),/Journey confirmed/);
+assert.doesNotMatch(read("lib/proposals.ts"),/privateMeetingDetails/);assert.doesNotMatch(read("components/ProposalManager.tsx"),/privateMeetingDetails|explorerId|clerkId/);
+console.log("Unfar Phase 4 atomic Agreement structural validation passed");

@@ -41,10 +41,11 @@ export async function startTrip(
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
     return await serializable(db, async tx => {
-      const trip = await tx.trip.findUnique({ where: { id: tripId } });
+      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true } } } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.IN_PROGRESS) return { ok: true, value: trip };
       if (trip.status !== TripStatus.ACCEPTED) return conflict("Visit cannot be started");
+      if (trip.agreement && trip.agreement.agreedEarliestStart > now) return conflict("Confirmed Journey has not reached its agreed start time");
       const changed = await tx.trip.updateMany({
         where: { id: tripId, status: TripStatus.ACCEPTED, operatorId: trip.operatorId },
         data: { status: TripStatus.IN_PROGRESS, startedAt: now },
@@ -268,10 +269,12 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const abandonedAccepted = await tx.trip.findMany({
       where: { status: TripStatus.ACCEPTED, acceptedAt: { lte: new Date(now.getTime() - RECOVERY_WINDOWS.acceptedMs) } },
-      select: { id: true, operatorId: true },
+      select: { id: true, operatorId: true, agreement: { select: { agreedEarliestStart: true, agreedLatestStart: true } } },
       take: 50,
     });
     for (const trip of abandonedAccepted) {
+      const scheduledBoundary = trip.agreement?.agreedLatestStart ?? trip.agreement?.agreedEarliestStart;
+      if (scheduledBoundary && scheduledBoundary.getTime() + RECOVERY_WINDOWS.acceptedMs > now.getTime()) continue;
       const changed = await tx.trip.updateMany({
         where: { id: trip.id, status: TripStatus.ACCEPTED },
         data: { status: TripStatus.CANCELLED, cancelledAt: now },

@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const read = path => readFileSync(path, "utf8"), schema = read("prisma/schema.prisma"), migration = read("prisma/migrations/20260731210000_phase3_versioned_proposals/migration.sql"), service = read("lib/proposals.ts");
-assert.match(schema, /enum ProposalStatus \{\s+ACTIVE\s+SUPERSEDED\s+WITHDRAWN\s+DECLINED\s+EXPIRED/); assert.doesNotMatch(schema, /ProposalStatus \{[\s\S]*ACCEPTED/);
+assert.match(schema, /enum ProposalStatus \{\s+ACTIVE\s+SUPERSEDED\s+WITHDRAWN\s+DECLINED\s+EXPIRED/); assert.doesNotMatch(migration, /ACCEPTED|NOT_SELECTED/);
 for (const field of ["journeyRequestId", "teleporterId", "version", "revisesProposalId", "earliestStart", "latestStart", "durationMinutes", "proposedPriceMinor", "currency", "validUntil", "status", "createdAt", "terminalAt"]) assert.match(schema, new RegExp(`\\b${field}\\b`));
 for (const invariant of ["Proposal_one_active_chain_key", "Proposal_journeyRequestId_teleporterId_version_key", "Proposal_revisesProposalId_key", "Proposal_immutable_transition", "Proposal_prevent_delete"]) assert.match(migration, new RegExp(invariant));
 assert.match(migration, /WHERE "status" = 'ACTIVE'/); assert.match(migration, /OLD\."status" <> 'ACTIVE' OR NEW\."status" = 'ACTIVE'/); assert.match(migration, /Proposal authored terms are immutable/);
@@ -24,5 +24,5 @@ assert.equal(validateProposalInput(valid, request, now).ok, true);
 for (const body of [{...valid,earliestStart:"2026-08-02T00:00:00Z"},{...valid,latestStart:"bad"},{...valid,durationMinutes:0},{...valid,proposedPriceMinor:-1},{...valid,currency:"EUR"},{...valid,validUntil:"2026-08-04T00:00:00Z"}]) assert.equal(validateProposalInput(body, request, now).ok, false);
 for (const path of ["app/api/operator/journey-requests/[id]/proposals/route.ts","app/api/operator/proposals/[id]/revise/route.ts","app/api/operator/proposals/[id]/withdraw/route.ts"]) assert.match(read(path), /authorizeTeleporterActivityApi/);
 for (const path of ["app/api/journey-requests/[id]/proposals/route.ts","app/api/journey-requests/[id]/proposals/[proposalId]/history/route.ts","app/api/journey-requests/[id]/proposals/[proposalId]/decline/route.ts"]) assert.match(read(path), /authorizeExplorerApi/);
-assert.match(read("app/api/admin/proposals/route.ts"), /authorizeAdminApi/); assert.doesNotMatch(read("components/ReceivedProposals.tsx"), />Accept|acceptProposal|\/accept/); assert.doesNotMatch(read("components/ProposalManager.tsx"), /privateMeetingDetails|explorerId|clerkId/);
+assert.match(read("app/api/admin/proposals/route.ts"), /authorizeAdminApi/); assert.doesNotMatch(read("components/ProposalManager.tsx"), /privateMeetingDetails|explorerId|clerkId/);
 rmSync(".phase3-test-build", { recursive: true, force: true }); console.log("Unfar Phase 3 immutable Proposal validation passed");

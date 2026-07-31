@@ -7,7 +7,7 @@ const schema = readFileSync("prisma/schema.prisma", "utf8"), migration = readFil
 assert.match(schema, /enum JourneyRequestStatus \{\s+OPEN\s+WITHDRAWN\s+EXPIRED\s+CONVERTED/);
 for (const field of ["explorerId", "publicPlaceName", "coarseLocation", "privateMeetingDetails", "earliestStart", "latestStart", "durationMinutes", "proposedPriceMinor", "currency", "expiresAt", "createdAt", "updatedAt"]) assert.match(schema, new RegExp(`\\b${field}\\b`));
 for (const check of ["JourneyRequest_window_check", "JourneyRequest_duration_check", "JourneyRequest_price_check", "JourneyRequest_currency_check", "JourneyRequest_expiration_check", "JourneyRequest_lifecycle_check"]) assert.match(migration, new RegExp(check));
-assert.doesNotMatch(schema, /model (Agreement|Review|GuidedExperience|LiveMoment)\b/);
+assert.doesNotMatch(schema, /model (Review|GuidedExperience|LiveMoment)\b/);
 assert.doesNotMatch(serviceSource.match(/DISCOVERY_SELECT = \{[\s\S]*?\} satisfies/)?.[0] ?? "", /privateMeetingDetails|explorerId/);
 assert.match(serviceSource, /status: JourneyRequestStatus\.OPEN, expiresAt: \{ gt: now \}/);
 

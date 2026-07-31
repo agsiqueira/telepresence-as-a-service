@@ -1,0 +1,4 @@
+"use client";
+import { useEffect,useState } from "react";
+import type { AgreementView } from "@/components/AgreementConfirmation";
+export default function TeleporterAgreements(){const[items,setItems]=useState<AgreementView[]>([]);useEffect(()=>{void fetch("/api/operator/agreements",{cache:"no-store"}).then(async r=>{if(r.ok)setItems((await r.json()).agreements??[])})},[]);if(!items.length)return null;return <section className="mt-8"><h2 className="text-xl font-semibold">Confirmed Journey obligations</h2><ul className="mt-3 divide-y rounded-xl border bg-white">{items.map(item=><li key={item.id} className="p-4"><p className="font-semibold">{item.publicPlaceNameSnapshot}</p><p className="text-sm">{new Date(item.agreedEarliestStart).toLocaleString()} · {item.agreedDurationMinutes} minutes</p>{item.privateMeetingSnapshot&&<p className="mt-2 text-sm"><strong>Fulfillment details:</strong> {item.privateMeetingSnapshot}</p>}</li>)}</ul></section>}

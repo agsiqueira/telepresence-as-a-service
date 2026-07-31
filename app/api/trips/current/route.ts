@@ -20,10 +20,11 @@ export async function GET(req: Request) {
   try {
     const access = await authorizeExplorerApi(); if (!access.ok) return access.response; const user = access.user;
     const teleporterView = new URL(req.url).searchParams.get("as") === "teleporter";
+    const confirmationReady = { OR: [{ status: TripStatus.IN_PROGRESS }, { status: TripStatus.ACCEPTED, agreement: { is: null } }, { status: TripStatus.ACCEPTED, agreement: { is: { agreedEarliestStart: { lte: new Date() } } } }] };
     const trip = await db.trip.findFirst({
       where: teleporterView
-        ? { operatorId: user.id, status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] } }
-        : { viewerId: user.id, status: { in: ACTIVE } },
+        ? { operatorId: user.id, AND: [confirmationReady] }
+        : { viewerId: user.id, AND: [{ status: { in: ACTIVE } }, { OR: [{ status: { in: [TripStatus.REQUESTED, TripStatus.OFFERED, TripStatus.IN_PROGRESS] } }, { status: TripStatus.ACCEPTED, agreement: { is: null } }, { status: TripStatus.ACCEPTED, agreement: { is: { agreedEarliestStart: { lte: new Date() } } } }] }] },
       orderBy: { requestedAt: "desc" },
       select: SELECT,
     });

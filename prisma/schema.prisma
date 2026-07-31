@@ -74,6 +74,12 @@ enum ProposalStatus {
   WITHDRAWN
   DECLINED
   EXPIRED
+  ACCEPTED
+  NOT_SELECTED
+}
+
+enum AgreementStatus {
+  CONFIRMED
 }
 
 model User {
@@ -106,6 +112,8 @@ model User {
   accountLifecycleHistory AccountLifecycleAudit[] @relation("AccountLifecycleTarget")
   journeyRequests         JourneyRequest[]        @relation("ExplorerJourneyRequests")
   proposalsAuthored       Proposal[]              @relation("TeleporterProposals")
+  agreementsAsExplorer    Agreement[]             @relation("ExplorerAgreements")
+  agreementsAsTeleporter  Agreement[]             @relation("TeleporterAgreements")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -256,7 +264,9 @@ model Trip {
   feedback       Feedback[]
   offers         TripOffer[]
   journeyRequest JourneyRequest?
+  agreement      Agreement?
 
+  @@unique([id, viewerId, operatorId])
   @@index([status])
   @@index([offeredOperatorId, status, offerExpiresAt])
   @@index([destinationId])
@@ -285,7 +295,9 @@ model JourneyRequest {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   proposals             Proposal[]
+  agreement             Agreement?
 
+  @@unique([id, explorerId])
   @@index([explorerId, createdAt])
   @@index([status, expiresAt, earliestStart])
   @@index([coarseLocation, status, expiresAt])
@@ -311,10 +323,43 @@ model Proposal {
   status             ProposalStatus @default(ACTIVE)
   createdAt          DateTime       @default(now())
   terminalAt         DateTime?
+  agreement          Agreement?
 
+  @@unique([id, journeyRequestId, teleporterId])
   @@unique([journeyRequestId, teleporterId, version])
   @@index([journeyRequestId, status, validUntil])
   @@index([teleporterId, journeyRequestId, createdAt])
+}
+
+model Agreement {
+  id                      String          @id @default(cuid())
+  journeyRequest          JourneyRequest  @relation(fields: [journeyRequestId, explorerId], references: [id, explorerId], onDelete: Restrict)
+  journeyRequestId        String          @unique
+  proposal                Proposal        @relation(fields: [proposalId, journeyRequestId, teleporterId], references: [id, journeyRequestId, teleporterId], onDelete: Restrict)
+  proposalId              String          @unique
+  explorer                User            @relation("ExplorerAgreements", fields: [explorerId], references: [id], onDelete: Restrict)
+  explorerId              String
+  teleporter              User            @relation("TeleporterAgreements", fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporterId            String
+  trip                    Trip            @relation(fields: [tripId, explorerId, teleporterId], references: [id, viewerId, operatorId], onDelete: Restrict)
+  tripId                  String          @unique
+  agreedEarliestStart     DateTime
+  agreedLatestStart       DateTime?
+  agreedDurationMinutes   Int
+  agreedPriceMinor        Int
+  currency                String          @db.Char(3)
+  destinationIdSnapshot   String?
+  publicPlaceNameSnapshot String          @db.VarChar(120)
+  coarseLocationSnapshot  String          @db.VarChar(120)
+  privateMeetingSnapshot  String?         @db.VarChar(500)
+  status                  AgreementStatus @default(CONFIRMED)
+  confirmedAt             DateTime        @default(now())
+
+  @@unique([journeyRequestId, explorerId])
+  @@unique([proposalId, journeyRequestId, teleporterId])
+  @@unique([tripId, explorerId, teleporterId])
+  @@index([explorerId, confirmedAt])
+  @@index([teleporterId, confirmedAt])
 }
 
 model TripOffer {
