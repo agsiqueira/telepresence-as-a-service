@@ -68,6 +68,14 @@ enum JourneyRequestStatus {
   CONVERTED
 }
 
+enum ProposalStatus {
+  ACTIVE
+  SUPERSEDED
+  WITHDRAWN
+  DECLINED
+  EXPIRED
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -97,6 +105,7 @@ model User {
   accountLifecycleActions AccountLifecycleAudit[] @relation("AccountLifecycleActor")
   accountLifecycleHistory AccountLifecycleAudit[] @relation("AccountLifecycleTarget")
   journeyRequests         JourneyRequest[]        @relation("ExplorerJourneyRequests")
+  proposalsAuthored       Proposal[]              @relation("TeleporterProposals")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -275,11 +284,37 @@ model JourneyRequest {
   convertedAt           DateTime?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
+  proposals             Proposal[]
 
   @@index([explorerId, createdAt])
   @@index([status, expiresAt, earliestStart])
   @@index([coarseLocation, status, expiresAt])
   @@index([destinationId])
+}
+
+model Proposal {
+  id                 String         @id @default(cuid())
+  journeyRequest     JourneyRequest @relation(fields: [journeyRequestId], references: [id], onDelete: Restrict)
+  journeyRequestId   String
+  teleporter         User           @relation("TeleporterProposals", fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporterId       String
+  version            Int
+  revisesProposal    Proposal?      @relation("ProposalRevision", fields: [revisesProposalId], references: [id], onDelete: Restrict)
+  revisesProposalId  String?        @unique
+  revision           Proposal?      @relation("ProposalRevision")
+  earliestStart      DateTime
+  latestStart        DateTime?
+  durationMinutes    Int
+  proposedPriceMinor Int
+  currency           String         @db.Char(3)
+  validUntil         DateTime
+  status             ProposalStatus @default(ACTIVE)
+  createdAt          DateTime       @default(now())
+  terminalAt         DateTime?
+
+  @@unique([journeyRequestId, teleporterId, version])
+  @@index([journeyRequestId, status, validUntil])
+  @@index([teleporterId, journeyRequestId, createdAt])
 }
 
 model TripOffer {
