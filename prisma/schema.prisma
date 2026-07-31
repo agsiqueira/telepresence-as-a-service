@@ -61,6 +61,13 @@ enum OfferStatus {
   EXPIRED
 }
 
+enum JourneyRequestStatus {
+  OPEN
+  WITHDRAWN
+  EXPIRED
+  CONVERTED
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -89,6 +96,7 @@ model User {
   applicationsReviewed    OperatorApplication[]   @relation("OperatorApplicationReviewer")
   accountLifecycleActions AccountLifecycleAudit[] @relation("AccountLifecycleActor")
   accountLifecycleHistory AccountLifecycleAudit[] @relation("AccountLifecycleTarget")
+  journeyRequests         JourneyRequest[]        @relation("ExplorerJourneyRequests")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -168,8 +176,9 @@ model Destination {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  trips     Trip[]
-  operators OperatorDestination[]
+  trips           Trip[]
+  operators       OperatorDestination[]
+  journeyRequests JourneyRequest[]
 
   @@index([active, category])
 }
@@ -235,11 +244,41 @@ model Trip {
   feedbackSkippedAt     DateTime?
   retryOfTripId         String?      @unique
 
-  feedback Feedback[]
-  offers   TripOffer[]
+  feedback       Feedback[]
+  offers         TripOffer[]
+  journeyRequest JourneyRequest?
 
   @@index([status])
   @@index([offeredOperatorId, status, offerExpiresAt])
+  @@index([destinationId])
+}
+
+model JourneyRequest {
+  id                    String               @id @default(cuid())
+  explorer              User                 @relation("ExplorerJourneyRequests", fields: [explorerId], references: [id], onDelete: Restrict)
+  explorerId            String
+  destination           Destination?         @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  destinationId         String?
+  trip                  Trip?                @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId                String?              @unique
+  publicPlaceName       String               @db.VarChar(120)
+  coarseLocation        String               @db.VarChar(120)
+  privateMeetingDetails String?              @db.VarChar(500)
+  earliestStart         DateTime
+  latestStart           DateTime
+  durationMinutes       Int
+  proposedPriceMinor    Int
+  currency              String               @db.Char(3)
+  expiresAt             DateTime
+  status                JourneyRequestStatus @default(OPEN)
+  withdrawnAt           DateTime?
+  convertedAt           DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([explorerId, createdAt])
+  @@index([status, expiresAt, earliestStart])
+  @@index([coarseLocation, status, expiresAt])
   @@index([destinationId])
 }
 
