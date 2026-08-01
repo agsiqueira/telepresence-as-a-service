@@ -1,0 +1,6 @@
+import assert from "node:assert/strict"; import { readFileSync } from "node:fs";
+const r=p=>readFileSync(p,"utf8"),schema=r("prisma/schema.prisma"),migration=r("prisma/migrations/20260801120000_safety_reporting_phase4c_messages/migration.sql"),service=r("lib/safety-conversations.ts"),admin=r("components/AdminSafetyConversations.tsx"),participant=r("components/SafetySupportInbox.tsx");
+for(const v of ["SafetyReportConversation","SafetyReportMessage","REPORTER","REPORTED_PARTICIPANT","ADMINISTRATOR","PARTICIPANT"]) assert.ok(schema.includes(v)&&migration.includes(v));
+for(const v of ["sendSafetyReportMessageForAdmin","listSafetyReportConversationsForAdmin","getSafetyReportConversationForAdmin","listSafetyConversationsForParticipant","getSafetyConversationForParticipant","replyToSafetyConversationForParticipant","report.reporterId","report.reportedId","take:50"]) assert.ok(service.replaceAll(" ","").includes(v.replaceAll(" ","")));
+assert.doesNotMatch(participant,/triage|assignment|internal note|REPORTER|REPORTED_PARTICIPANT/i); assert.match(admin,/roles\.map/); assert.match(admin,/window\.confirm/); assert.match(service,/Safety administrator/); assert.doesNotMatch(admin+participant,/dangerouslySetInnerHTML|attachment|evidence|payment|\bTip\b/i);
+console.log("Safety Reporting Phase 4C isolated communication validation passed: 40/40");

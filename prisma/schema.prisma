@@ -128,6 +128,16 @@ enum SafetyReportTriageStatus {
   CLOSED_NO_ACTION
 }
 
+enum SafetyReportConversationRole {
+  REPORTER
+  REPORTED_PARTICIPANT
+}
+
+enum SafetyReportMessageAuthorType {
+  ADMINISTRATOR
+  PARTICIPANT
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -172,6 +182,9 @@ model User {
   safetyReportPreviousAssignments SafetyReportAssignmentEvent[]        @relation("SafetyReportPreviousAssignee")
   safetyReportNewAssignments      SafetyReportAssignmentEvent[]        @relation("SafetyReportNewAssignee")
   safetyReportInternalNotes       SafetyReportInternalNote[]           @relation("SafetyReportNoteAuthors")
+  safetyReportConversations       SafetyReportConversation[]
+  safetyReportAdminMessages       SafetyReportMessage[]                @relation("SafetyReportMessageAdministrators")
+  safetyReportParticipantMessages SafetyReportMessage[]                @relation("SafetyReportMessageParticipants")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -542,6 +555,7 @@ model SafetyReport {
   assignedAt              DateTime?                     @db.Timestamptz(3)
   assignmentEvents        SafetyReportAssignmentEvent[]
   internalNotes           SafetyReportInternalNote[]
+  conversations           SafetyReportConversation[]
 
   @@unique([tripId, reporterId])
   @@index([createdAt, id])
@@ -586,4 +600,33 @@ model SafetyReportInternalNote {
   createdAt       DateTime     @default(now()) @db.Timestamptz(3)
 
   @@index([safetyReportId, createdAt, id])
+}
+
+model SafetyReportConversation {
+  id              String                       @id @default(uuid()) @db.Uuid
+  safetyReport    SafetyReport                 @relation(fields: [safetyReportId], references: [id], onDelete: Restrict)
+  safetyReportId  String                       @db.Uuid
+  participantRole SafetyReportConversationRole
+  participant     User                         @relation(fields: [participantId], references: [id], onDelete: Restrict)
+  participantId   String
+  createdAt       DateTime                     @default(now()) @db.Timestamptz(3)
+  messages        SafetyReportMessage[]
+
+  @@unique([safetyReportId, participantRole])
+  @@index([participantId, createdAt, id])
+}
+
+model SafetyReportMessage {
+  id              String                        @id @default(uuid()) @db.Uuid
+  conversation    SafetyReportConversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  conversationId  String                        @db.Uuid
+  authorType      SafetyReportMessageAuthorType
+  administrator   User?                         @relation("SafetyReportMessageAdministrators", fields: [administratorId], references: [id], onDelete: Restrict)
+  administratorId String?
+  participant     User?                         @relation("SafetyReportMessageParticipants", fields: [participantId], references: [id], onDelete: Restrict)
+  participantId   String?
+  body            String                        @db.VarChar(2000)
+  createdAt       DateTime                      @default(now()) @db.Timestamptz(3)
+
+  @@index([conversationId, createdAt, id])
 }
