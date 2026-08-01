@@ -121,6 +121,13 @@ enum SafetyReportRole {
   TELEPORTER
 }
 
+enum SafetyReportTriageStatus {
+  NEW
+  UNDER_REVIEW
+  ESCALATED
+  CLOSED_NO_ACTION
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -136,29 +143,30 @@ model User {
   activeTripId             String?
   createdAt                DateTime      @default(now())
 
-  tripsAsViewer           Trip[]                               @relation("TripsAsViewer")
-  tripsAsOperator         Trip[]                               @relation("TripsAsOperator")
-  feedback                Feedback[]
-  operatorProfile         OperatorProfile?
-  destinationServices     OperatorDestination[]
-  offers                  TripOffer[]                          @relation("OperatorOffers")
-  offeredTrips            Trip[]                               @relation("OfferedOperator")
-  roleChangesPerformed    AdminRoleChangeAudit[]               @relation("AdminRoleChangeActor")
-  roleChangesReceived     AdminRoleChangeAudit[]               @relation("AdminRoleChangeTarget")
-  operatorApplications    OperatorApplication[]                @relation("OperatorApplicationApplicant")
-  applicationsReviewed    OperatorApplication[]                @relation("OperatorApplicationReviewer")
-  accountLifecycleActions AccountLifecycleAudit[]              @relation("AccountLifecycleActor")
-  accountLifecycleHistory AccountLifecycleAudit[]              @relation("AccountLifecycleTarget")
-  journeyRequests         JourneyRequest[]                     @relation("ExplorerJourneyRequests")
-  proposalsAuthored       Proposal[]                           @relation("TeleporterProposals")
-  agreementsAsExplorer    Agreement[]                          @relation("ExplorerAgreements")
-  agreementsAsTeleporter  Agreement[]                          @relation("TeleporterAgreements")
-  scheduledReservations   ScheduledJourneyReservation[]
-  proposedReschedules     ScheduledJourneyRescheduleProposal[]
-  journeyReviewsAuthored  JourneyReview[]                      @relation("JourneyReviewsAuthored")
-  journeyReviewsReceived  JourneyReview[]                      @relation("JourneyReviewsReceived")
-  safetyReportsAuthored   SafetyReport[]                       @relation("SafetyReportsAuthored")
-  safetyReportsReceived   SafetyReport[]                       @relation("SafetyReportsReceived")
+  tripsAsViewer            Trip[]                               @relation("TripsAsViewer")
+  tripsAsOperator          Trip[]                               @relation("TripsAsOperator")
+  feedback                 Feedback[]
+  operatorProfile          OperatorProfile?
+  destinationServices      OperatorDestination[]
+  offers                   TripOffer[]                          @relation("OperatorOffers")
+  offeredTrips             Trip[]                               @relation("OfferedOperator")
+  roleChangesPerformed     AdminRoleChangeAudit[]               @relation("AdminRoleChangeActor")
+  roleChangesReceived      AdminRoleChangeAudit[]               @relation("AdminRoleChangeTarget")
+  operatorApplications     OperatorApplication[]                @relation("OperatorApplicationApplicant")
+  applicationsReviewed     OperatorApplication[]                @relation("OperatorApplicationReviewer")
+  accountLifecycleActions  AccountLifecycleAudit[]              @relation("AccountLifecycleActor")
+  accountLifecycleHistory  AccountLifecycleAudit[]              @relation("AccountLifecycleTarget")
+  journeyRequests          JourneyRequest[]                     @relation("ExplorerJourneyRequests")
+  proposalsAuthored        Proposal[]                           @relation("TeleporterProposals")
+  agreementsAsExplorer     Agreement[]                          @relation("ExplorerAgreements")
+  agreementsAsTeleporter   Agreement[]                          @relation("TeleporterAgreements")
+  scheduledReservations    ScheduledJourneyReservation[]
+  proposedReschedules      ScheduledJourneyRescheduleProposal[]
+  journeyReviewsAuthored   JourneyReview[]                      @relation("JourneyReviewsAuthored")
+  journeyReviewsReceived   JourneyReview[]                      @relation("JourneyReviewsReceived")
+  safetyReportsAuthored    SafetyReport[]                       @relation("SafetyReportsAuthored")
+  safetyReportsReceived    SafetyReport[]                       @relation("SafetyReportsReceived")
+  safetyReportTriageEvents SafetyReportTriageEvent[]            @relation("SafetyReportTriageAdministrators")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -509,21 +517,36 @@ model JourneyReview {
 }
 
 model SafetyReport {
-  id           String               @id @default(uuid()) @db.Uuid
-  trip         Trip                 @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  id           String                    @id @default(uuid()) @db.Uuid
+  trip         Trip                      @relation(fields: [tripId], references: [id], onDelete: Restrict)
   tripId       String
-  reporter     User                 @relation("SafetyReportsAuthored", fields: [reporterId], references: [id], onDelete: Restrict)
+  reporter     User                      @relation("SafetyReportsAuthored", fields: [reporterId], references: [id], onDelete: Restrict)
   reporterId   String
-  reported     User                 @relation("SafetyReportsReceived", fields: [reportedId], references: [id], onDelete: Restrict)
+  reported     User                      @relation("SafetyReportsReceived", fields: [reportedId], references: [id], onDelete: Restrict)
   reportedId   String
   reporterRole SafetyReportRole
   reportedRole SafetyReportRole
   category     SafetyReportCategory
   severity     SafetyReportSeverity
-  narrative    String               @db.VarChar(2000)
-  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+  narrative    String                    @db.VarChar(2000)
+  createdAt    DateTime                  @default(now()) @db.Timestamptz(3)
+  triageStatus SafetyReportTriageStatus  @default(NEW)
+  triageEvents SafetyReportTriageEvent[]
 
   @@unique([tripId, reporterId])
   @@index([createdAt, id])
   @@index([reportedId, createdAt])
+}
+
+model SafetyReportTriageEvent {
+  id              String                   @id @default(uuid()) @db.Uuid
+  safetyReport    SafetyReport             @relation(fields: [safetyReportId], references: [id], onDelete: Restrict)
+  safetyReportId  String                   @db.Uuid
+  administrator   User                     @relation("SafetyReportTriageAdministrators", fields: [administratorId], references: [id], onDelete: Restrict)
+  administratorId String
+  previousStatus  SafetyReportTriageStatus
+  newStatus       SafetyReportTriageStatus
+  createdAt       DateTime                 @default(now()) @db.Timestamptz(3)
+
+  @@index([safetyReportId, createdAt, id])
 }

@@ -10,12 +10,13 @@ const detail = read("components/AdminSafetyReportDetail.tsx");
 const participant = read("components/SafetyReportDialog.tsx");
 for (const value of ["listSafetyReportsForAdmin", "getSafetyReportForAdmin", "Role.ADMIN", "AccountStatus.ACTIVE", "take: limit + 1", 'createdAt: "desc"', 'id: "desc"', "MAX_LIMIT = 50", "category", "severity"]) assert.ok(service.includes(value), value);
 assert.match(service, /identity = \{ id: true, name: true \}/);
-assert.doesNotMatch(service, /Feedback|JourneyReview|Agreement|capabilit|reputation|update|delete|create\(/i);
+const readService = service.slice(0, service.indexOf("const transitions:"));
+assert.doesNotMatch(readService, /Feedback|JourneyReview|Agreement|capabilit|reputation|update|delete|create\(/i);
 for (const api of [listApi, detailApi]) { assert.match(api, /authorizeAdminApi/); assert.match(api, /Cache-Control.*no-store/); assert.doesNotMatch(api, /POST|PUT|PATCH|DELETE/); }
 assert.match(listApi, /listSafetyReportsForAdmin/); assert.match(detailApi, /getSafetyReportForAdmin/);
 assert.match(layout, /\["Safety Reports","\/admin\/safety-reports"\]/);
 for (const value of ["Confidential participant-submitted information", "not itself a factual determination", "authorized Administrators", "category", "severity", "nextCursor", "/api/admin/safety-reports?"]) assert.ok(list.includes(value), value);
-for (const value of ["Participant-submitted Safety Report", "reported concern, not a factual determination", "whitespace-pre-wrap", "report.narrative", "/api/admin/safety-reports/${id}"]) assert.ok(detail.includes(value), value);
-assert.doesNotMatch(list + detail, /dangerouslySetInnerHTML|status change|assign|resolve|suspend|evidence|download|payment|\bTip\b/i);
+for (const value of ["Participant-submitted Safety Report", "does not determine whether the report is true", "whitespace-pre-wrap", "report.narrative", "/api/admin/safety-reports/${id}"]) assert.ok(detail.includes(value), value);
+assert.doesNotMatch(list + detail, /dangerouslySetInnerHTML|assign|resolve|suspend|evidence|download|payment|\bTip\b/i);
 assert.doesNotMatch(participant, /api\/admin\/safety-reports/);
 console.log("Safety Reporting Phase 3 Administrator read-only validation passed: 38/38");

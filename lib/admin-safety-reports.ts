@@ -1,16 +1,17 @@
 import "server-only";
 
-import { AccountStatus, Prisma, Role, SafetyReportCategory, SafetyReportSeverity } from "@prisma/client";
+import { AccountStatus, Prisma, Role, SafetyReportCategory, SafetyReportSeverity, SafetyReportTriageStatus } from "@prisma/client";
 import type { db as applicationDb } from "@/lib/db";
 
-type Database = Pick<typeof applicationDb, "user" | "safetyReport">;
+type Database = typeof applicationDb;
 const MAX_LIMIT = 50;
 const categories = new Set(Object.values(SafetyReportCategory));
 const severities = new Set(Object.values(SafetyReportSeverity));
+const triageStatuses = new Set(Object.values(SafetyReportTriageStatus));
 const identity = { id: true, name: true } as const;
 
 export class AdminSafetyReportError extends Error {
-  constructor(readonly code: "FORBIDDEN" | "INVALID_QUERY" | "NOT_FOUND", readonly status: 400 | 403 | 404) { super(code); }
+  constructor(readonly code: "FORBIDDEN" | "INVALID_QUERY" | "NOT_FOUND" | "INVALID_TRANSITION" | "TRIAGE_CONFLICT", readonly status: 400 | 403 | 404 | 409) { super(code); }
 }
 
 async function requireAdmin(database: Database, adminId: string) {
@@ -27,21 +28,23 @@ function decodeCursor(value: string | null) {
   } catch { throw new AdminSafetyReportError("INVALID_QUERY", 400); }
 }
 
-export type AdminSafetyReportFilters = { category?: string | null; severity?: string | null; cursor?: string | null; limit?: string | number | null };
+export type AdminSafetyReportFilters = { category?: string | null; severity?: string | null; triageStatus?: string | null; cursor?: string | null; limit?: string | number | null };
 
 export async function listSafetyReportsForAdmin(database: Database, adminId: string, filters: AdminSafetyReportFilters) {
   await requireAdmin(database, adminId);
   if (filters.category && !categories.has(filters.category as SafetyReportCategory)) throw new AdminSafetyReportError("INVALID_QUERY", 400);
   if (filters.severity && !severities.has(filters.severity as SafetyReportSeverity)) throw new AdminSafetyReportError("INVALID_QUERY", 400);
+  if (filters.triageStatus && !triageStatuses.has(filters.triageStatus as SafetyReportTriageStatus)) throw new AdminSafetyReportError("INVALID_QUERY", 400);
   const limit = filters.limit == null || filters.limit === "" ? 20 : Number(filters.limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) throw new AdminSafetyReportError("INVALID_QUERY", 400);
   const cursor = decodeCursor(filters.cursor ?? null);
   const where: Prisma.SafetyReportWhereInput = {
     ...(filters.category ? { category: filters.category as SafetyReportCategory } : {}),
     ...(filters.severity ? { severity: filters.severity as SafetyReportSeverity } : {}),
+    ...(filters.triageStatus ? { triageStatus: filters.triageStatus as SafetyReportTriageStatus } : {}),
     ...(cursor ? { OR: [{ createdAt: { lt: cursor.createdAt } }, { createdAt: cursor.createdAt, id: { lt: cursor.id } }] } : {}),
   };
-  const rows = await database.safetyReport.findMany({ where, take: limit + 1, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, tripId: true, category: true, severity: true, createdAt: true, reporterRole: true, reportedRole: true, reporter: { select: identity }, reported: { select: identity } } });
+  const rows = await database.safetyReport.findMany({ where, take: limit + 1, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, tripId: true, category: true, severity: true, triageStatus: true, createdAt: true, reporterRole: true, reportedRole: true, reporter: { select: identity }, reported: { select: identity } } });
   const hasMore = rows.length > limit;
   const items = rows.slice(0, limit);
   const last = items.at(-1);
@@ -51,7 +54,27 @@ export async function listSafetyReportsForAdmin(database: Database, adminId: str
 export async function getSafetyReportForAdmin(database: Database, adminId: string, reportId: string) {
   await requireAdmin(database, adminId);
   if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(reportId)) throw new AdminSafetyReportError("NOT_FOUND", 404);
-  const report = await database.safetyReport.findUnique({ where: { id: reportId }, select: { id: true, tripId: true, category: true, severity: true, narrative: true, createdAt: true, reporterRole: true, reportedRole: true, reporter: { select: identity }, reported: { select: identity }, trip: { select: { id: true, status: true, requestedAt: true, acceptedAt: true, startedAt: true, endedAt: true } } } });
+  const report = await database.safetyReport.findUnique({ where: { id: reportId }, select: { id: true, tripId: true, category: true, severity: true, narrative: true, triageStatus: true, createdAt: true, reporterRole: true, reportedRole: true, reporter: { select: identity }, reported: { select: identity }, trip: { select: { id: true, status: true, requestedAt: true, acceptedAt: true, startedAt: true, endedAt: true } }, triageEvents: { take: 100, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true, previousStatus: true, newStatus: true, createdAt: true, administrator: { select: identity } } } } });
   if (!report) throw new AdminSafetyReportError("NOT_FOUND", 404);
   return report;
+}
+
+const transitions: Record<SafetyReportTriageStatus, readonly SafetyReportTriageStatus[]> = {
+  NEW: ["UNDER_REVIEW", "ESCALATED", "CLOSED_NO_ACTION"], UNDER_REVIEW: ["ESCALATED", "CLOSED_NO_ACTION"],
+  ESCALATED: ["UNDER_REVIEW", "CLOSED_NO_ACTION"], CLOSED_NO_ACTION: ["UNDER_REVIEW"],
+};
+
+export async function updateSafetyReportTriageStatusForAdmin(database: Database, adminId: string, reportId: string, input: unknown) {
+  await requireAdmin(database, adminId);
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(reportId) || !input || typeof input !== "object" || Array.isArray(input)) throw new AdminSafetyReportError("NOT_FOUND", 404);
+  const keys = Object.keys(input); if (keys.length !== 2 || !keys.includes("expectedStatus") || !keys.includes("newStatus")) throw new AdminSafetyReportError("INVALID_QUERY", 400);
+  const { expectedStatus, newStatus } = input as { expectedStatus?: unknown; newStatus?: unknown };
+  if (typeof expectedStatus !== "string" || typeof newStatus !== "string" || !triageStatuses.has(expectedStatus as SafetyReportTriageStatus) || !triageStatuses.has(newStatus as SafetyReportTriageStatus)) throw new AdminSafetyReportError("INVALID_QUERY", 400);
+  if (!transitions[expectedStatus as SafetyReportTriageStatus].includes(newStatus as SafetyReportTriageStatus)) throw new AdminSafetyReportError("INVALID_TRANSITION", 400);
+  return database.$transaction(async tx => {
+    const changed = await tx.safetyReport.updateMany({ where: { id: reportId, triageStatus: expectedStatus as SafetyReportTriageStatus }, data: { triageStatus: newStatus as SafetyReportTriageStatus } });
+    if (changed.count !== 1) { const exists = await tx.safetyReport.findUnique({ where: { id: reportId }, select: { id: true } }); throw new AdminSafetyReportError(exists ? "TRIAGE_CONFLICT" : "NOT_FOUND", exists ? 409 : 404); }
+    const event = await tx.safetyReportTriageEvent.create({ data: { safetyReportId: reportId, administratorId: adminId, previousStatus: expectedStatus as SafetyReportTriageStatus, newStatus: newStatus as SafetyReportTriageStatus }, select: { id: true, previousStatus: true, newStatus: true, createdAt: true } });
+    return { id: reportId, triageStatus: newStatus as SafetyReportTriageStatus, event };
+  });
 }
