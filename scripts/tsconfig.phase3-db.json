@@ -16,6 +16,7 @@
     "phase4-db-integration.ts",
     "phase34-db-concurrency.ts",
     "phase5a1-db-integration.ts",
+    "phase5a2-db-integration.ts",
     "phase5a-db-integration.ts",
     "phase5b-db-integration.ts",
     "phase5c-db-integration.ts",

@@ -9,6 +9,14 @@ type Database = PrismaClient;
 type Failure = { ok: false; status: 400 | 404 | 409; error: string };
 const fail = (status: Failure["status"], error: string): Failure => ({ ok: false, status, error });
 const retryable = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2034" || error.code === "P2002");
+const RESERVATION_EXCLUSION = "ScheduledJourneyReservation_no_confirmed_overlap";
+const reservationConflict = (error: unknown) => {
+  if (!(error instanceof Error)) return false;
+  const details = error instanceof Prisma.PrismaClientKnownRequestError ? JSON.stringify(error.meta ?? {}) : "";
+  return (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010" && details.includes("23P01")) ||
+    ((error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2004") || error instanceof Prisma.PrismaClientUnknownRequestError) &&
+      (details.includes(RESERVATION_EXCLUSION) || error.message.includes(RESERVATION_EXCLUSION));
+};
 
 const SNAPSHOT_SELECT = {
   id: true, journeyRequestId: true, proposalId: true, tripId: true,
@@ -80,6 +88,9 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
         if (selected < proposal.earliestStart || selected > proposal.latestStart) return fail(400, "Scheduled start must be within the Proposal window");
         agreedStartAt = selected;
       }
+      if (!Number.isInteger(proposal.durationMinutes) || proposal.durationMinutes <= 0 || !Number.isFinite(agreedStartAt.getTime())) throw new Error("INVALID_RESERVATION_INTERVAL");
+      const reservationEndAt = new Date(agreedStartAt.getTime() + proposal.durationMinutes * 60_000);
+      if (!Number.isFinite(reservationEndAt.getTime()) || reservationEndAt <= agreedStartAt) throw new Error("INVALID_RESERVATION_INTERVAL");
       const teleporter = proposal.teleporter;
       const destinations = teleporter.destinationServices.map(value => value.destinationId);
       const supportsRequest = request.destinationId ? destinations.includes(request.destinationId) : Boolean(teleporter.operatorProfile?.supportsCustom);
@@ -112,11 +123,16 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
         publicPlaceNameSnapshot: request.publicPlaceName, coarseLocationSnapshot: request.coarseLocation,
         privateMeetingSnapshot: request.privateMeetingDetails, status: AgreementStatus.CONFIRMED, confirmedAt: now,
       }, select: PRIVATE_SELECT });
+      await tx.scheduledJourneyReservation.create({ data: {
+        teleporterId: teleporter.id, agreementId: agreement.id, tripId: trip.id,
+        startAt: agreedStartAt, endAt: reservationEndAt, status: "CONFIRMED",
+      } });
       const converted = await tx.journeyRequest.updateMany({ where: { id: requestId, explorerId, status: JourneyRequestStatus.OPEN, expiresAt: { gt: now }, tripId: null }, data: { status: JourneyRequestStatus.CONVERTED, convertedAt: now, tripId: trip.id, updatedAt: now } });
       if (converted.count !== 1) throw new Error("REQUEST_CONVERSION_RACE");
       return { ok: true as const, value: agreement, created: true };
     });
   } catch (error) {
+    if (reservationConflict(error)) return fail(409, "The Teleporter is no longer available for the selected Journey time.");
     if (retryable(error) || (error instanceof Error && error.message === "REQUEST_CONVERSION_RACE")) return fail(409, "Confirmation changed concurrently; refresh and try again");
     throw error;
   }

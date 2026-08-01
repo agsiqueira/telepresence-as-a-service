@@ -82,6 +82,11 @@ enum AgreementStatus {
   CONFIRMED
 }
 
+enum ScheduledJourneyReservationStatus {
+  CONFIRMED
+  RELEASED
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -97,23 +102,24 @@ model User {
   activeTripId             String?
   createdAt                DateTime      @default(now())
 
-  tripsAsViewer           Trip[]                  @relation("TripsAsViewer")
-  tripsAsOperator         Trip[]                  @relation("TripsAsOperator")
+  tripsAsViewer           Trip[]                        @relation("TripsAsViewer")
+  tripsAsOperator         Trip[]                        @relation("TripsAsOperator")
   feedback                Feedback[]
   operatorProfile         OperatorProfile?
   destinationServices     OperatorDestination[]
-  offers                  TripOffer[]             @relation("OperatorOffers")
-  offeredTrips            Trip[]                  @relation("OfferedOperator")
-  roleChangesPerformed    AdminRoleChangeAudit[]  @relation("AdminRoleChangeActor")
-  roleChangesReceived     AdminRoleChangeAudit[]  @relation("AdminRoleChangeTarget")
-  operatorApplications    OperatorApplication[]   @relation("OperatorApplicationApplicant")
-  applicationsReviewed    OperatorApplication[]   @relation("OperatorApplicationReviewer")
-  accountLifecycleActions AccountLifecycleAudit[] @relation("AccountLifecycleActor")
-  accountLifecycleHistory AccountLifecycleAudit[] @relation("AccountLifecycleTarget")
-  journeyRequests         JourneyRequest[]        @relation("ExplorerJourneyRequests")
-  proposalsAuthored       Proposal[]              @relation("TeleporterProposals")
-  agreementsAsExplorer    Agreement[]             @relation("ExplorerAgreements")
-  agreementsAsTeleporter  Agreement[]             @relation("TeleporterAgreements")
+  offers                  TripOffer[]                   @relation("OperatorOffers")
+  offeredTrips            Trip[]                        @relation("OfferedOperator")
+  roleChangesPerformed    AdminRoleChangeAudit[]        @relation("AdminRoleChangeActor")
+  roleChangesReceived     AdminRoleChangeAudit[]        @relation("AdminRoleChangeTarget")
+  operatorApplications    OperatorApplication[]         @relation("OperatorApplicationApplicant")
+  applicationsReviewed    OperatorApplication[]         @relation("OperatorApplicationReviewer")
+  accountLifecycleActions AccountLifecycleAudit[]       @relation("AccountLifecycleActor")
+  accountLifecycleHistory AccountLifecycleAudit[]       @relation("AccountLifecycleTarget")
+  journeyRequests         JourneyRequest[]              @relation("ExplorerJourneyRequests")
+  proposalsAuthored       Proposal[]                    @relation("TeleporterProposals")
+  agreementsAsExplorer    Agreement[]                   @relation("ExplorerAgreements")
+  agreementsAsTeleporter  Agreement[]                   @relation("TeleporterAgreements")
+  scheduledReservations   ScheduledJourneyReservation[]
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -261,10 +267,11 @@ model Trip {
   feedbackSkippedAt     DateTime?
   retryOfTripId         String?      @unique
 
-  feedback       Feedback[]
-  offers         TripOffer[]
-  journeyRequest JourneyRequest?
-  agreement      Agreement?
+  feedback             Feedback[]
+  offers               TripOffer[]
+  journeyRequest       JourneyRequest?
+  agreement            Agreement?
+  scheduledReservation ScheduledJourneyReservation?
 
   @@unique([id, viewerId, operatorId])
   @@index([status])
@@ -332,35 +339,54 @@ model Proposal {
 }
 
 model Agreement {
-  id                      String          @id @default(cuid())
-  journeyRequest          JourneyRequest  @relation(fields: [journeyRequestId, explorerId], references: [id, explorerId], onDelete: Restrict)
-  journeyRequestId        String          @unique
-  proposal                Proposal        @relation(fields: [proposalId, journeyRequestId, teleporterId], references: [id, journeyRequestId, teleporterId], onDelete: Restrict)
-  proposalId              String          @unique
-  explorer                User            @relation("ExplorerAgreements", fields: [explorerId], references: [id], onDelete: Restrict)
+  id                      String                       @id @default(cuid())
+  journeyRequest          JourneyRequest               @relation(fields: [journeyRequestId, explorerId], references: [id, explorerId], onDelete: Restrict)
+  journeyRequestId        String                       @unique
+  proposal                Proposal                     @relation(fields: [proposalId, journeyRequestId, teleporterId], references: [id, journeyRequestId, teleporterId], onDelete: Restrict)
+  proposalId              String                       @unique
+  explorer                User                         @relation("ExplorerAgreements", fields: [explorerId], references: [id], onDelete: Restrict)
   explorerId              String
-  teleporter              User            @relation("TeleporterAgreements", fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporter              User                         @relation("TeleporterAgreements", fields: [teleporterId], references: [id], onDelete: Restrict)
   teleporterId            String
-  trip                    Trip            @relation(fields: [tripId, explorerId, teleporterId], references: [id, viewerId, operatorId], onDelete: Restrict)
-  tripId                  String          @unique
-  agreedStartAt           DateTime?       @db.Timestamptz(3)
+  trip                    Trip                         @relation(fields: [tripId, explorerId, teleporterId], references: [id, viewerId, operatorId], onDelete: Restrict)
+  tripId                  String                       @unique
+  agreedStartAt           DateTime?                    @db.Timestamptz(3)
   agreedEarliestStart     DateTime
   agreedLatestStart       DateTime?
   agreedDurationMinutes   Int
   agreedPriceMinor        Int
-  currency                String          @db.Char(3)
+  currency                String                       @db.Char(3)
   destinationIdSnapshot   String?
-  publicPlaceNameSnapshot String          @db.VarChar(120)
-  coarseLocationSnapshot  String          @db.VarChar(120)
-  privateMeetingSnapshot  String?         @db.VarChar(500)
-  status                  AgreementStatus @default(CONFIRMED)
-  confirmedAt             DateTime        @default(now())
+  publicPlaceNameSnapshot String                       @db.VarChar(120)
+  coarseLocationSnapshot  String                       @db.VarChar(120)
+  privateMeetingSnapshot  String?                      @db.VarChar(500)
+  status                  AgreementStatus              @default(CONFIRMED)
+  confirmedAt             DateTime                     @default(now())
+  scheduledReservation    ScheduledJourneyReservation?
 
   @@unique([journeyRequestId, explorerId])
   @@unique([proposalId, journeyRequestId, teleporterId])
   @@unique([tripId, explorerId, teleporterId])
   @@index([explorerId, confirmedAt])
   @@index([teleporterId, confirmedAt])
+}
+
+model ScheduledJourneyReservation {
+  id           String                            @id @default(uuid()) @db.Uuid
+  teleporter   User                              @relation(fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporterId String
+  agreement    Agreement                         @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  agreementId  String                            @unique
+  trip         Trip                              @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId       String                            @unique
+  startAt      DateTime                          @db.Timestamptz(3)
+  endAt        DateTime                          @db.Timestamptz(3)
+  status       ScheduledJourneyReservationStatus @default(CONFIRMED)
+  createdAt    DateTime                          @default(now()) @db.Timestamptz(3)
+  releasedAt   DateTime?                         @db.Timestamptz(3)
+
+  @@index([teleporterId, startAt])
+  @@index([status, startAt])
 }
 
 model TripOffer {
