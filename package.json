@@ -75,6 +75,8 @@
     "test:unfar:phase5d1:db": "node scripts/run-phase5d1-review-db-tests.mjs",
     "test:unfar:phase5d2": "node scripts/validate-unfar-phase5d2-ui.mjs",
     "test:feedback-reload": "node scripts/validate-feedback-reload-remediation.mjs",
+    "test:safety-reporting:phase1": "node scripts/validate-safety-reporting-phase1.mjs",
+    "test:safety-reporting:phase1:db": "node scripts/run-safety-reporting-phase1-db-tests.mjs",
     "test:phase5e2:db": "node scripts/run-phase5e2-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"

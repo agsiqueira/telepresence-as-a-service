@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read=path=>readFileSync(path,"utf8"),schema=read("prisma/schema.prisma"),migration=read("prisma/migrations/20260801070000_safety_reporting_phase1/migration.sql"),service=read("lib/safety-reports.ts"),route=read("app/api/trips/[id]/safety-report/route.ts");
+for(const token of["model SafetyReport","enum SafetyReportCategory","enum SafetyReportSeverity","enum SafetyReportRole","@@unique([tripId, reporterId])","@db.VarChar(2000)"])assert.ok(schema.includes(token));
+for(const token of["SafetyReport_distinct_participants_check","SafetyReport_opposite_roles_check","SafetyReport_narrative_length_check","SafetyReport_tripId_reporterId_key"])assert.ok(migration.includes(token));
+assert.doesNotMatch(migration,/(?:^|\n)\s*(?:UPDATE|INSERT\s+INTO)\s+"(?:Trip|Agreement|Feedback|JourneyReview|SafetyReport)"/i);
+assert.match(service,/OR:\[\{viewerId:actorId\},\{operatorId:actorId\}\]/);assert.match(service,/TripStatus\.ACCEPTED/);assert.match(service,/TripStatus\.CANCELLED/);assert.match(service,/trip\.operatorId/);assert.match(service,/trip\.viewerId===actorId/);assert.match(service,/TransactionIsolationLevel\.Serializable/);assert.match(service,/P2002/);assert.match(service,/SAFETY_REPORT_ALREADY_SUBMITTED/);
+assert.match(route,/authorizeApiUser/);assert.match(route,/Object\.keys\(body\)/);assert.match(route,/status:201/);assert.doesNotMatch(route,/reporterId|reportedId|reporterRole|reportedRole|GET|PUT|DELETE/);
+for(const source of[service,route])assert.doesNotMatch(source,/FeedbackForm|completeViewerFeedback|feedbackCompletedAt|reputation|suspend|notification|payment|\bTip\b/i);
+console.log("Safety Reporting Phase 1 structural validation passed: 26/26");

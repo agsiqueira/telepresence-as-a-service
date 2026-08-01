@@ -100,6 +100,27 @@ enum JourneyReviewRole {
   TELEPORTER
 }
 
+enum SafetyReportCategory {
+  HARASSMENT
+  DISCRIMINATION
+  THREATENING_BEHAVIOR
+  UNSAFE_CONDUCT
+  PROPERTY_OR_PRIVACY_CONCERN
+  OTHER
+}
+
+enum SafetyReportSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SafetyReportRole {
+  EXPLORER
+  TELEPORTER
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -136,6 +157,8 @@ model User {
   proposedReschedules     ScheduledJourneyRescheduleProposal[]
   journeyReviewsAuthored  JourneyReview[]                      @relation("JourneyReviewsAuthored")
   journeyReviewsReceived  JourneyReview[]                      @relation("JourneyReviewsReceived")
+  safetyReportsAuthored   SafetyReport[]                       @relation("SafetyReportsAuthored")
+  safetyReportsReceived   SafetyReport[]                       @relation("SafetyReportsReceived")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -291,6 +314,7 @@ model Trip {
   scheduledReservations ScheduledJourneyReservation[]
   rescheduleProposals   ScheduledJourneyRescheduleProposal[]
   reviews               JourneyReview[]
+  safetyReports         SafetyReport[]
 
   @@unique([id, viewerId, operatorId])
   @@index([status])
@@ -482,4 +506,24 @@ model JourneyReview {
   @@unique([tripId, reviewerRole])
   @@index([revieweeId, revieweeRole, submittedAt])
   @@index([tripId, submittedAt])
+}
+
+model SafetyReport {
+  id           String               @id @default(uuid()) @db.Uuid
+  trip         Trip                 @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId       String
+  reporter     User                 @relation("SafetyReportsAuthored", fields: [reporterId], references: [id], onDelete: Restrict)
+  reporterId   String
+  reported     User                 @relation("SafetyReportsReceived", fields: [reportedId], references: [id], onDelete: Restrict)
+  reportedId   String
+  reporterRole SafetyReportRole
+  reportedRole SafetyReportRole
+  category     SafetyReportCategory
+  severity     SafetyReportSeverity
+  narrative    String               @db.VarChar(2000)
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+
+  @@unique([tripId, reporterId])
+  @@index([createdAt, id])
+  @@index([reportedId, createdAt])
 }
