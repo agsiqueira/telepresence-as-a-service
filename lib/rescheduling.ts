@@ -70,6 +70,30 @@ export async function listPendingRescheduleProposals(db: Database, actorId: stri
   return { ok: true as const, value: proposal ? safe(proposal, trip, actorId) : null };
 }
 
+export async function getReschedulingState(db: Database, actorId: string, tripId: string) {
+  const trip = await db.trip.findUnique({
+    where: { id: tripId },
+    select: {
+      viewerId: true, operatorId: true, status: true, immediate: true,
+      agreement: { select: { id: true, agreedStartAt: true, agreedDurationMinutes: true } },
+      scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true, agreementId: true, tripId: true, startAt: true, endAt: true }, take: 2 },
+      rescheduleProposals: { where: { status: ScheduledJourneyRescheduleStatus.PENDING }, orderBy: { createdAt: "desc" }, take: 2 },
+    },
+  });
+  if (!trip || !party(trip, actorId)) return fail(404, "Journey not found");
+  const reservation = trip.scheduledReservations.length === 1 ? trip.scheduledReservations[0] : null;
+  const consistent = Boolean(reservation && trip.agreement && reservation.tripId === tripId && reservation.agreementId === trip.agreement.id);
+  const proposal = trip.rescheduleProposals.length === 1 ? trip.rescheduleProposals[0] : null;
+  const proposalConsistent = !proposal || Boolean(trip.agreement && reservation && proposal.agreementId === trip.agreement.id && proposal.fromReservationId === reservation.id && (proposal.proposerId === trip.viewerId || proposal.proposerId === trip.operatorId));
+  const eligible = trip.status === TripStatus.ACCEPTED && !trip.immediate && Boolean(trip.operatorId) && consistent && proposalConsistent && trip.rescheduleProposals.length <= 1;
+  const legacyStart = !trip.scheduledReservations.length && trip.agreement ? trip.agreement.agreedStartAt : null;
+  const legacyDuration = legacyStart && trip.agreement ? trip.agreement.agreedDurationMinutes : null;
+  const currentStartAt = consistent ? reservation!.startAt : legacyStart;
+  const currentEndAt = consistent ? reservation!.endAt : legacyStart && legacyDuration ? new Date(legacyStart.getTime() + legacyDuration * 60_000) : null;
+  const durationMinutes = consistent ? Math.round((reservation!.endAt.getTime() - reservation!.startAt.getTime()) / 60_000) : legacyDuration;
+  return { ok: true as const, value: { eligible, currentStartAt, currentEndAt, durationMinutes, canPropose: eligible && proposal === null, proposal: proposal ? safe(proposal, trip, actorId) : null } };
+}
+
 export async function acceptRescheduleProposal(db: Database, actorId: string, tripId: string, proposalId: string, now = new Date()) {
   if (!uuid(proposalId)) return fail(404, "Reschedule proposal not found");
   try {

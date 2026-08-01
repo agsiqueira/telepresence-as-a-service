@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import JourneyReschedulingPanel from "@/components/JourneyReschedulingPanel";
 
 export type AgreementView = { id:string; tripId:string; proposalId:string; agreedStartAt:string|null; agreedEarliestStart:string; agreedLatestStart:string|null; agreedDurationMinutes:number; agreedPriceMinor:number; currency:string; publicPlaceNameSnapshot:string; coarseLocationSnapshot:string; privateMeetingSnapshot:string|null; status:string; confirmedAt:string };
 
@@ -10,5 +11,5 @@ export default function AgreementConfirmation({ requestId, refresh = 0 }: { requ
   useEffect(()=>{void load()},[load,refresh]);
   if(!agreement)return null;
   const timing=agreement.agreedStartAt?`Confirmed start: ${new Date(agreement.agreedStartAt).toLocaleString()}`:agreement.agreedLatestStart?`Accepted start window: ${new Date(agreement.agreedEarliestStart).toLocaleString()} – ${new Date(agreement.agreedLatestStart).toLocaleString()}`:`Legacy accepted start: ${new Date(agreement.agreedEarliestStart).toLocaleString()}`;
-  return <section className="mx-auto mt-6 max-w-2xl rounded-xl border border-green-700 bg-green-50 p-5"><p className="text-sm font-semibold uppercase text-green-800">Journey confirmed</p><h2 className="mt-1 text-xl font-bold">{agreement.publicPlaceNameSnapshot}</h2><p className="mt-2">{timing} · {agreement.agreedDurationMinutes} minutes</p><p>{agreement.agreedPriceMinor} {agreement.currency}</p>{agreement.privateMeetingSnapshot&&<p className="mt-3 text-sm"><strong>Meeting details:</strong> {agreement.privateMeetingSnapshot}</p>}<p className="mt-3 text-xs text-gray-600">Agreement {agreement.id} · Journey {agreement.tripId}</p></section>;
+  return <section className="mx-auto mt-6 max-w-2xl rounded-xl border border-green-700 bg-green-50 p-5"><p className="text-sm font-semibold uppercase text-green-800">Journey confirmed</p><h2 className="mt-1 text-xl font-bold">{agreement.publicPlaceNameSnapshot}</h2><p className="mt-2">{timing} · {agreement.agreedDurationMinutes} minutes</p><p>{agreement.agreedPriceMinor} {agreement.currency}</p>{agreement.privateMeetingSnapshot&&<p className="mt-3 text-sm"><strong>Meeting details:</strong> {agreement.privateMeetingSnapshot}</p>}<JourneyReschedulingPanel tripId={agreement.tripId} onRefresh={load}/><p className="mt-3 text-xs text-gray-600">Agreement {agreement.id} · Journey {agreement.tripId}</p></section>;
 }
