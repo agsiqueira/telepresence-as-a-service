@@ -60,6 +60,8 @@
     "test:unfar:phase3": "node scripts/validate-unfar-phase3.mjs",
     "test:unfar:phase4": "node scripts/validate-unfar-phase4.mjs",
     "test:unfar:phase4:services": "node scripts/validate-unfar-phase4-services.mjs",
+    "test:unfar:phase5a1": "node scripts/validate-unfar-phase5a1.mjs",
+    "test:unfar:phase5a1:db": "node scripts/run-phase5a1-db-tests.mjs",
     "test:phase5e2:db": "node scripts/run-phase5e2-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"

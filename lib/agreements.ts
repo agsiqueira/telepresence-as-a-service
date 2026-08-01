@@ -6,12 +6,13 @@ import { profileIsComplete } from "@/lib/marketplace";
 import { publicDisplayName } from "@/lib/profiles";
 
 type Database = PrismaClient;
-type Failure = { ok: false; status: 404 | 409; error: string };
+type Failure = { ok: false; status: 400 | 404 | 409; error: string };
 const fail = (status: Failure["status"], error: string): Failure => ({ ok: false, status, error });
 const retryable = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2034" || error.code === "P2002");
 
 const SNAPSHOT_SELECT = {
   id: true, journeyRequestId: true, proposalId: true, tripId: true,
+  agreedStartAt: true,
   agreedEarliestStart: true, agreedLatestStart: true, agreedDurationMinutes: true,
   agreedPriceMinor: true, currency: true, destinationIdSnapshot: true,
   publicPlaceNameSnapshot: true, coarseLocationSnapshot: true,
@@ -28,7 +29,14 @@ async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient
   }
 }
 
-export async function acceptProposal(db: Database, explorerId: string, requestId: string, proposalId: string, now = new Date()) {
+type AcceptanceInput = Record<string, unknown> & { scheduledStartAt?: unknown };
+const explicitInstant = (value: unknown) => {
+  if (typeof value !== "string" || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export async function acceptProposal(db: Database, explorerId: string, requestId: string, proposalId: string, input: AcceptanceInput = {}, now = new Date()) {
   try {
     return await serializable(db, async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "JourneyRequest" WHERE "id" = ${requestId} FOR UPDATE`);
@@ -42,6 +50,7 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
         }
         return fail(409, "Journey Request already has a different confirmed Agreement");
       }
+      if (Object.keys(input).some(key => key !== "scheduledStartAt")) return fail(400, "Unsupported acceptance field");
 
       await tx.journeyRequest.updateMany({ where: { id: requestId, status: JourneyRequestStatus.OPEN, expiresAt: { lte: now } }, data: { status: JourneyRequestStatus.EXPIRED, updatedAt: now } });
       await tx.proposal.updateMany({ where: { journeyRequestId: requestId, status: ProposalStatus.ACTIVE, validUntil: { lte: now } }, data: { status: ProposalStatus.EXPIRED, terminalAt: now } });
@@ -61,6 +70,16 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
       });
       if (!proposal || proposal.journeyRequestId !== requestId) return fail(404, "Proposal not found");
       if (proposal.status !== ProposalStatus.ACTIVE || proposal.validUntil <= now) return fail(409, "Proposal can no longer be accepted");
+      let agreedStartAt: Date;
+      if (proposal.latestStart === null) {
+        if (input.scheduledStartAt !== undefined) return fail(400, "A fixed Proposal start cannot be changed");
+        agreedStartAt = proposal.earliestStart;
+      } else {
+        const selected = explicitInstant(input.scheduledStartAt);
+        if (!selected) return fail(400, "Choose a scheduled start with an explicit UTC offset");
+        if (selected < proposal.earliestStart || selected > proposal.latestStart) return fail(400, "Scheduled start must be within the Proposal window");
+        agreedStartAt = selected;
+      }
       const teleporter = proposal.teleporter;
       const destinations = teleporter.destinationServices.map(value => value.destinationId);
       const supportsRequest = request.destinationId ? destinations.includes(request.destinationId) : Boolean(teleporter.operatorProfile?.supportsCustom);
@@ -86,6 +105,7 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
 
       const agreement = await tx.agreement.create({ data: {
         journeyRequestId: request.id, proposalId: proposal.id, explorerId, teleporterId: teleporter.id, tripId: trip.id,
+        agreedStartAt,
         agreedEarliestStart: proposal.earliestStart, agreedLatestStart: proposal.latestStart,
         agreedDurationMinutes: proposal.durationMinutes, agreedPriceMinor: proposal.proposedPriceMinor,
         currency: proposal.currency.toUpperCase(), destinationIdSnapshot: request.destinationId,

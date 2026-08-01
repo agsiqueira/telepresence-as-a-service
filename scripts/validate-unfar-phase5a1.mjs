@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const schema=read("prisma/schema.prisma"),migration=read("prisma/migrations/20260801010000_unfar_phase5a1_exact_start/migration.sql"),service=read("lib/agreements.ts"),route=read("app/api/journey-requests/[id]/proposals/[proposalId]/accept/route.ts");
+assert.match(schema,/agreedStartAt\s+DateTime\?\s+@db\.Timestamptz\(3\)/);
+assert.match(migration,/ADD COLUMN "agreedStartAt" TIMESTAMPTZ\(3\)/);assert.doesNotMatch(migration,/\bUPDATE\b|INSERT INTO|DELETE FROM/);
+assert.match(migration,/OLD\."agreedStartAt" IS DISTINCT FROM NEW\."agreedStartAt"/);assert.match(migration,/Agreement snapshots are immutable/);
+assert.match(service,/proposal\.latestStart === null/);assert.match(service,/agreedStartAt = proposal\.earliestStart/);assert.match(service,/selected < proposal\.earliestStart \|\| selected > proposal\.latestStart/);assert.match(service,/agreedStartAt,/);assert.match(service,/activeTripId: tripId/);
+assert.match(route,/key !== "scheduledStartAt"/);assert.match(route,/Invalid acceptance request/);
+assert.doesNotMatch(schema,/ScheduledJourneyReservation|ReservationStatus/);assert.doesNotMatch(migration,/EXCLUDE USING|btree_gist|tstzrange/);
+console.log("Unfar Phase 5A.1 exact-start structural validation passed");

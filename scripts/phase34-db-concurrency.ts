@@ -55,18 +55,19 @@ async function race(label: string, ...actions: Array<() => Promise<unknown>>) {
   return results;
 }
 const body = (price = 2600) => ({ earliestStart: plus(125).toISOString(), latestStart: plus(155).toISOString(), durationMinutes: 30, proposedPriceMinor: price, currency: "USD", validUntil: plus(55).toISOString() });
+const accept = (f: Awaited<ReturnType<typeof fixture>>, index = 0) => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[index].id, { scheduledStartAt: f.proposals[index].earliestStart.toISOString() }, now);
 
 async function main() {
-  { const label = "two competing Proposal acceptances", f = await fixture(2); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[1].id, now)); await verify(label, f.request.id); }
-  { const label = "same-Proposal retry", f = await fixture(); const results = await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now)); assert.ok(results.some(r => r.status === "fulfilled" && r.value && (r.value as {ok:boolean}).ok)); await verify(label, f.request.id); }
-  { const label = "acceptance versus withdrawal", f = await fixture(); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => withdrawProposal(db, f.operators[0].id, f.proposals[0].id, now)); await verify(label, f.request.id); }
-  { const label = "acceptance versus decline", f = await fixture(); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => declineProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now)); await verify(label, f.request.id); }
-  { const label = "acceptance versus revision", f = await fixture(); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => reviseProposal(db, f.operators[0].id, f.proposals[0].id, body(), now)); await verify(label, f.request.id); }
-  { const label = "acceptance versus expiration", f = await fixture(); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => listTeleporterProposalHistory(db, f.operators[0].id, f.request.id, plus(61))); await verify(label, f.request.id); }
-  { const label = "acceptance versus JourneyRequest withdrawal", f = await fixture(); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => withdrawJourneyRequest(db, f.explorer.id, f.request.id, now)); await verify(label, f.request.id); }
-  { const label = "Proposal creation after conversion", f = await fixture(2); await race(label, () => acceptProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now), () => submitInitialProposal(db, f.operators[1].id, f.request.id, body(2700), now)); await verify(label, f.request.id); }
+  { const label = "two competing Proposal acceptances", f = await fixture(2); await race(label, () => accept(f), () => accept(f, 1)); await verify(label, f.request.id); }
+  { const label = "same-Proposal retry", f = await fixture(); const results = await race(label, () => accept(f), () => accept(f)); assert.ok(results.some(r => r.status === "fulfilled" && r.value && (r.value as {ok:boolean}).ok)); await verify(label, f.request.id); }
+  { const label = "acceptance versus withdrawal", f = await fixture(); await race(label, () => accept(f), () => withdrawProposal(db, f.operators[0].id, f.proposals[0].id, now)); await verify(label, f.request.id); }
+  { const label = "acceptance versus decline", f = await fixture(); await race(label, () => accept(f), () => declineProposal(db, f.explorer.id, f.request.id, f.proposals[0].id, now)); await verify(label, f.request.id); }
+  { const label = "acceptance versus revision", f = await fixture(); await race(label, () => accept(f), () => reviseProposal(db, f.operators[0].id, f.proposals[0].id, body(), now)); await verify(label, f.request.id); }
+  { const label = "acceptance versus expiration", f = await fixture(); await race(label, () => accept(f), () => listTeleporterProposalHistory(db, f.operators[0].id, f.request.id, plus(61))); await verify(label, f.request.id); }
+  { const label = "acceptance versus JourneyRequest withdrawal", f = await fixture(); await race(label, () => accept(f), () => withdrawJourneyRequest(db, f.explorer.id, f.request.id, now)); await verify(label, f.request.id); }
+  { const label = "Proposal creation after conversion", f = await fixture(2); await race(label, () => accept(f), () => submitInitialProposal(db, f.operators[1].id, f.request.id, body(2700), now)); await verify(label, f.request.id); }
 
-  const immutable = await fixture(); await acceptProposal(db, immutable.explorer.id, immutable.request.id, immutable.proposals[0].id, now);
+  const immutable = await fixture(); await accept(immutable);
   const agreement = await db.agreement.findUniqueOrThrow({ where: { journeyRequestId: immutable.request.id } });
   await assert.rejects(db.agreement.update({ where: { id: agreement.id }, data: { agreedPriceMinor: agreement.agreedPriceMinor + 1 } }));
   await assert.rejects(db.agreement.delete({ where: { id: agreement.id } }));

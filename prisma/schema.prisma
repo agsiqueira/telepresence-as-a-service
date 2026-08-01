@@ -343,6 +343,7 @@ model Agreement {
   teleporterId            String
   trip                    Trip            @relation(fields: [tripId, explorerId, teleporterId], references: [id, viewerId, operatorId], onDelete: Restrict)
   tripId                  String          @unique
+  agreedStartAt           DateTime?       @db.Timestamptz(3)
   agreedEarliestStart     DateTime
   agreedLatestStart       DateTime?
   agreedDurationMinutes   Int
