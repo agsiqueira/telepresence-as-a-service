@@ -24,6 +24,8 @@ assert.match(lifecycle, /where: \{ id: trip\.operatorId, activeTripId: tripId \}
 assert.match(lifecycle, /scheduledReservation: \{ select: \{ id: true \} \}/);
 assert.match(lifecycle, /trip\.status === TripStatus\.ACCEPTED && trip\.scheduledReservation\) continue/);
 assert.match(startRoute, /authorizeApiUser/);
-assert.doesNotMatch(lifecycle, /releasedAt|ScheduledJourneyReservationStatus\.RELEASED|scheduledJourneyReservation\.(?:update|delete)/);
+const startAndEnd = (lifecycle.match(/export async function startTrip[\s\S]*?export async function cancelTrip/)?.[0] ?? "") + (lifecycle.match(/export async function endTrip[\s\S]*?export type FeedbackInput/)?.[0] ?? "");
+assert.doesNotMatch(startAndEnd, /releasedAt|status: "RELEASED"|scheduledJourneyReservation\.update/);
+assert.doesNotMatch(lifecycle, /scheduledJourneyReservation\.(?:delete|deleteMany)/);
 assert.doesNotMatch(projections, /reservationId|scheduledReservation|ScheduledJourneyReservation/);
 console.log("Unfar Phase 5A.3 operational-activation structural and service-source validation passed");

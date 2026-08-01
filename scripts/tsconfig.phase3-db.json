@@ -18,6 +18,7 @@
     "phase5a1-db-integration.ts",
     "phase5a2-db-integration.ts",
     "phase5a3-db-integration.ts",
+    "phase5a4-db-integration.ts",
     "phase5a-db-integration.ts",
     "phase5b-db-integration.ts",
     "phase5c-db-integration.ts",

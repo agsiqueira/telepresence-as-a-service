@@ -87,7 +87,8 @@ export async function cancelTrip(
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
     return await serializable(db, async tx => {
-      const trip = await tx.trip.findUnique({ where: { id: tripId } });
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
+      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { scheduledReservation: { select: { id: true, status: true } } } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip };
       const actsAsViewer = trip.viewerId === actorId;
@@ -117,6 +118,13 @@ export async function cancelTrip(
         },
       });
       if (changed.count !== 1) return conflict("Visit changed while cancellation was processed");
+
+      if (trip.status === TripStatus.ACCEPTED && trip.scheduledReservation?.status === "CONFIRMED") {
+        await tx.scheduledJourneyReservation.updateMany({
+          where: { id: trip.scheduledReservation.id, tripId, status: "CONFIRMED", releasedAt: null },
+          data: { status: "RELEASED", releasedAt: now },
+        });
+      }
 
       if (trip.status === TripStatus.OFFERED && trip.offeredOperatorId) {
         await tx.tripOffer.updateMany({
@@ -289,7 +297,8 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const abandonedAccepted = await tx.trip.findMany({
       where: { status: TripStatus.ACCEPTED, acceptedAt: { lte: new Date(now.getTime() - RECOVERY_WINDOWS.acceptedMs) } },
-      select: { id: true, operatorId: true, agreement: { select: { agreedEarliestStart: true, agreedLatestStart: true } } },
+      select: { id: true, operatorId: true, agreement: { select: { agreedEarliestStart: true, agreedLatestStart: true } }, scheduledReservation: { select: { id: true, status: true } } },
+      orderBy: { acceptedAt: "asc" },
       take: 50,
     });
     for (const trip of abandonedAccepted) {
@@ -299,6 +308,12 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
         where: { id: trip.id, status: TripStatus.ACCEPTED },
         data: { status: TripStatus.CANCELLED, cancelledAt: now },
       });
+      if (changed.count && trip.scheduledReservation?.status === "CONFIRMED") {
+        await tx.scheduledJourneyReservation.updateMany({
+          where: { id: trip.scheduledReservation.id, tripId: trip.id, status: "CONFIRMED", releasedAt: null },
+          data: { status: "RELEASED", releasedAt: now },
+        });
+      }
       if (changed.count && trip.operatorId) await tx.user.updateMany({ where: { id: trip.operatorId, activeTripId: trip.id }, data: { activeTripId: null } });
     }
 

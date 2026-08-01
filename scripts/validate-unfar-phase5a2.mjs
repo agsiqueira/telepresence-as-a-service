@@ -23,5 +23,6 @@ assert.match(service, /ScheduledJourneyReservation_no_confirmed_overlap/);
 assert.match(service, /The Teleporter is no longer available for the selected Journey time\./);
 assert.match(service, /scheduledJourneyReservation\.create/);
 assert.doesNotMatch(service, /scheduledReservation[^\n]*SNAPSHOT_SELECT|reservationId/);
-assert.doesNotMatch(lifecycle, /releasedAt|ScheduledJourneyReservationStatus\.RELEASED/);
+assert.doesNotMatch(service, /releasedAt|status:\s*["']RELEASED["']/);
+assert.doesNotMatch(lifecycle, /scheduledJourneyReservation\.(?:delete|deleteMany)/);
 console.log("Unfar Phase 5A.2 scheduled-reservation structural and service-source validation passed");
