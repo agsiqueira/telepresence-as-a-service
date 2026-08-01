@@ -1,0 +1,29 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const acceptance = read("lib/agreements.ts");
+const lifecycle = read("lib/trip-lifecycle.ts");
+const startRoute = read("app/api/trips/[id]/start/route.ts");
+const migration = read("prisma/migrations/20260801030000_unfar_phase5a2_scheduled_reservations/migration.sql");
+const projections = [read("components/AgreementConfirmation.tsx"), read("components/TeleporterAgreements.tsx"), read("components/AgreementAdminList.tsx")].join("\n");
+
+assert.doesNotMatch(acceptance, /teleporter\.activeTripId|data:\s*{\s*activeTripId|activeTripId:\s*null/);
+assert.doesNotMatch(acceptance, /tripsAsOperator/);
+assert.match(acceptance, /scheduledJourneyReservation\.create/);
+assert.match(acceptance, /ScheduledJourneyReservation_no_confirmed_overlap/);
+assert.match(acceptance, /The Teleporter is no longer available for the selected Journey time\./);
+assert.match(migration, /EXCLUDE USING gist[\s\S]*tstzrange\("startAt", "endAt", '\[\)'\)/);
+assert.match(lifecycle, /SELECT "id" FROM "Trip"[\s\S]*FOR UPDATE/);
+assert.match(lifecycle, /SELECT "id" FROM "User"[\s\S]*FOR UPDATE/);
+assert.match(lifecycle, /trip\.operatorId !== actorId/);
+assert.match(lifecycle, /scheduledReservation\?\.startAt/);
+assert.match(lifecycle, /activeTripId: trip\.id/);
+assert.match(lifecycle, /Another Journey is currently active\. End it before starting this Journey\./);
+assert.match(lifecycle, /where: \{ id: trip\.operatorId, activeTripId: tripId \}[\s\S]*activeTripId: null/);
+assert.match(lifecycle, /scheduledReservation: \{ select: \{ id: true \} \}/);
+assert.match(lifecycle, /trip\.status === TripStatus\.ACCEPTED && trip\.scheduledReservation\) continue/);
+assert.match(startRoute, /authorizeApiUser/);
+assert.doesNotMatch(lifecycle, /releasedAt|ScheduledJourneyReservationStatus\.RELEASED|scheduledJourneyReservation\.(?:update|delete)/);
+assert.doesNotMatch(projections, /reservationId|scheduledReservation|ScheduledJourneyReservation/);
+console.log("Unfar Phase 5A.3 operational-activation structural and service-source validation passed");

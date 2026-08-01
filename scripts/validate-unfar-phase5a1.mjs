@@ -5,7 +5,7 @@ const schema=read("prisma/schema.prisma"),migration=read("prisma/migrations/2026
 assert.match(schema,/agreedStartAt\s+DateTime\?\s+@db\.Timestamptz\(3\)/);
 assert.match(migration,/ADD COLUMN "agreedStartAt" TIMESTAMPTZ\(3\)/);assert.doesNotMatch(migration,/\bUPDATE\b|INSERT INTO|DELETE FROM/);
 assert.match(migration,/OLD\."agreedStartAt" IS DISTINCT FROM NEW\."agreedStartAt"/);assert.match(migration,/Agreement snapshots are immutable/);
-assert.match(service,/proposal\.latestStart === null/);assert.match(service,/agreedStartAt = proposal\.earliestStart/);assert.match(service,/selected < proposal\.earliestStart \|\| selected > proposal\.latestStart/);assert.match(service,/agreedStartAt,/);assert.match(service,/activeTripId: tripId/);
+assert.match(service,/proposal\.latestStart === null/);assert.match(service,/agreedStartAt = proposal\.earliestStart/);assert.match(service,/selected < proposal\.earliestStart \|\| selected > proposal\.latestStart/);assert.match(service,/agreedStartAt,/);
 assert.match(route,/key !== "scheduledStartAt"/);assert.match(route,/Invalid acceptance request/);
 assert.doesNotMatch(migration,/ScheduledJourneyReservation|ReservationStatus|EXCLUDE USING|btree_gist|tstzrange/);
 console.log("Unfar Phase 5A.1 exact-start structural validation passed");

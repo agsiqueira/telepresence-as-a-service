@@ -74,7 +74,8 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
       const proposal = await tx.proposal.findUnique({
         where: { id: proposalId },
         select: { id: true, journeyRequestId: true, teleporterId: true, earliestStart: true, latestStart: true, durationMinutes: true, proposedPriceMinor: true, currency: true, validUntil: true, status: true,
-          teleporter: { select: { id: true, role: true, accountStatus: true, name: true, pendingOfferTripId: true, activeTripId: true, operatorProfile: true, destinationServices: { where: { destination: { active: true } }, select: { destinationId: true } }, tripsAsOperator: { where: { status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] } }, select: { id: true }, take: 1 } } } },
+          teleporter: { select: { id: true, role: true, accountStatus: true, name: true, pendingOfferTripId: true, operatorProfile: true, destinationServices: { where: { destination: { active: true } }, select: { destinationId: true } } } },
+        },
       });
       if (!proposal || proposal.journeyRequestId !== requestId) return fail(404, "Proposal not found");
       if (proposal.status !== ProposalStatus.ACTIVE || proposal.validUntil <= now) return fail(409, "Proposal can no longer be accepted");
@@ -94,12 +95,10 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
       const teleporter = proposal.teleporter;
       const destinations = teleporter.destinationServices.map(value => value.destinationId);
       const supportsRequest = request.destinationId ? destinations.includes(request.destinationId) : Boolean(teleporter.operatorProfile?.supportsCustom);
-      if (teleporter.role === Role.ADMIN || teleporter.accountStatus !== AccountStatus.ACTIVE || teleporter.operatorProfile?.pilotStatus !== OperatorPilotStatus.APPROVED || teleporter.pendingOfferTripId || teleporter.activeTripId || teleporter.tripsAsOperator.length || !supportsRequest || !profileIsComplete(teleporter.operatorProfile, destinations.length, teleporter.operatorProfile?.supportsCustom ?? false, publicDisplayName(teleporter.name))) return fail(409, "Teleporter is no longer eligible for a new confirmed Journey");
+      if (teleporter.role === Role.ADMIN || teleporter.accountStatus !== AccountStatus.ACTIVE || teleporter.operatorProfile?.pilotStatus !== OperatorPilotStatus.APPROVED || teleporter.pendingOfferTripId || !supportsRequest || !profileIsComplete(teleporter.operatorProfile, destinations.length, teleporter.operatorProfile?.supportsCustom ?? false, publicDisplayName(teleporter.name))) return fail(409, "Teleporter is no longer eligible for a new confirmed Journey");
       if (teleporter.id === explorerId) return fail(409, "A Teleporter cannot fulfill their own Journey Request");
 
       const tripId = `trip-${randomUUID()}`;
-      const reserved = await tx.user.updateMany({ where: { id: teleporter.id, accountStatus: AccountStatus.ACTIVE, activeTripId: null, pendingOfferTripId: null, operatorProfile: { is: { pilotStatus: OperatorPilotStatus.APPROVED } } }, data: { activeTripId: tripId } });
-      if (reserved.count !== 1) return fail(409, "Teleporter changed availability during confirmation");
       const accepted = await tx.proposal.updateMany({ where: { id: proposal.id, journeyRequestId: requestId, status: ProposalStatus.ACTIVE, validUntil: { gt: now } }, data: { status: ProposalStatus.ACCEPTED, terminalAt: now } });
       if (accepted.count !== 1) return fail(409, "Proposal changed during confirmation");
       await tx.proposal.updateMany({ where: { journeyRequestId: requestId, id: { not: proposal.id }, status: ProposalStatus.ACTIVE, validUntil: { gt: now } }, data: { status: ProposalStatus.NOT_SELECTED, terminalAt: now } });

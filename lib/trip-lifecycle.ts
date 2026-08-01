@@ -11,11 +11,12 @@ const conflict = (error: string): LifecycleFailure => ({ ok: false, status: 409,
 const isSerializationFailure = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
 
-async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) {
+async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>, timeout?: number) {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await db.$transaction(work, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        ...(timeout === undefined ? {} : { timeout }),
       });
     } catch (error) {
       if (!isSerializationFailure(error) || attempt >= 2) throw error;
@@ -41,20 +42,38 @@ export async function startTrip(
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
     return await serializable(db, async tx => {
-      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true } } } });
-      if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
+      let trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservation: { select: { startAt: true, status: true } } } } } });
+      if (!trip || !trip.operatorId) return { ok: false, status: 404, error: "Not found" };
+      const isScheduled = Boolean(trip.agreement?.scheduledReservation);
+      if (isScheduled) {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
+        trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservation: { select: { startAt: true, status: true } } } } } });
+        if (!trip || !trip.operatorId) return { ok: false, status: 404, error: "Not found" };
+      }
+      if (isScheduled ? trip.operatorId !== actorId : !ownsTrip(trip, actorId, role)) {
+        return { ok: false, status: 404, error: "Not found" };
+      }
+      if (trip.status !== TripStatus.ACCEPTED && trip.status !== TripStatus.IN_PROGRESS) return conflict("Visit cannot be started");
+      const scheduledStart = trip.agreement?.scheduledReservation?.startAt ?? trip.agreement?.agreedEarliestStart;
+      if (trip.status === TripStatus.ACCEPTED && scheduledStart && scheduledStart > now) return conflict("Confirmed Journey has not reached its agreed start time");
+      if (isScheduled) {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${trip.operatorId} FOR UPDATE`);
+        const claimed = await tx.user.updateMany({
+          where: { id: trip.operatorId, OR: [{ activeTripId: null }, { activeTripId: trip.id }] },
+          data: { activeTripId: trip.id },
+        });
+        if (claimed.count !== 1) return conflict("Another Journey is currently active. End it before starting this Journey.");
+      }
       if (trip.status === TripStatus.IN_PROGRESS) return { ok: true, value: trip };
-      if (trip.status !== TripStatus.ACCEPTED) return conflict("Visit cannot be started");
-      if (trip.agreement && trip.agreement.agreedEarliestStart > now) return conflict("Confirmed Journey has not reached its agreed start time");
       const changed = await tx.trip.updateMany({
         where: { id: tripId, status: TripStatus.ACCEPTED, operatorId: trip.operatorId },
         data: { status: TripStatus.IN_PROGRESS, startedAt: now },
       });
-      if (changed.count !== 1) return conflict("Visit changed while starting");
+      if (changed.count !== 1) throw new Error("START_TRANSITION_RACE");
       return { ok: true, value: await tx.trip.findUniqueOrThrow({ where: { id: tripId } }) };
     });
   } catch (error) {
-    if (isSerializationFailure(error)) return conflict("Visit changed while starting");
+    if (isSerializationFailure(error) || (error instanceof Error && error.message === "START_TRANSITION_RACE")) return conflict("Visit changed while starting");
     throw error;
   }
 }
@@ -243,10 +262,11 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const assignedTrips = await tx.trip.findMany({
       where: { status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] }, operatorId: { not: null } },
-      select: { id: true, operatorId: true, status: true },
+      select: { id: true, operatorId: true, status: true, scheduledReservation: { select: { id: true } } },
       take: 50,
     });
     for (const trip of assignedTrips) {
+      if (trip.status === TripStatus.ACCEPTED && trip.scheduledReservation) continue;
       const reservation = await tx.user.count({ where: { id: trip.operatorId!, activeTripId: trip.id } });
       if (reservation) continue;
       const repaired = await tx.user.updateMany({
@@ -310,7 +330,7 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
       }
     }
     return { recovered: true };
-  });
+  }, 15_000);
 }
 
 export const TRIP_HISTORY_SELECT = {
