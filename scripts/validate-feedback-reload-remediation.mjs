@@ -1,0 +1,37 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = path => readFileSync(path, "utf8");
+const viewer = read("app/viewer/page.tsx");
+const operator = read("app/operator/page.tsx");
+const historyRoute = read("app/api/trips/history/route.ts");
+const lifecycle = read("lib/trip-lifecycle.ts");
+const feedback = read("components/FeedbackForm.tsx");
+const feedbackRoute = read("app/api/feedback/route.ts");
+const skipRoute = read("app/api/feedback/skip/route.ts");
+const currentRoute = read("app/api/trips/current/route.ts");
+const reviews = read("lib/journey-reviews.ts");
+
+assert.match(historyRoute, /listViewerHistory\(db, user\.id/);
+assert.match(lifecycle, /listViewerHistory[\s\S]*where: \{ viewerId \}/);
+assert.match(viewer, /item\.status==="ENDED"&&<section/);
+assert.match(viewer, /Complete private feedback/);
+assert.match(viewer, /<FeedbackForm tripId=\{item\.id\}/);
+assert.match(viewer, /setHistoryRefresh/);
+assert.match(viewer, /item\.status==="ENDED"\|\|item\.status==="FEEDBACK_COMPLETED"/);
+assert.match(viewer, /internal research feedback and are not shared with the Teleporter or used in Journey reviews/);
+assert.doesNotMatch(operator, /FeedbackForm|private feedback|presence|mediaQuality/i);
+assert.match(lifecycle, /status: item\.trip\.status === TripStatus\.FEEDBACK_COMPLETED \? TripStatus\.ENDED/);
+assert.doesNotMatch(lifecycle.match(/export async function listOperatorHistory[\s\S]*?\n\}/)?.[0] ?? "", /feedbackCompletedAt|feedbackSkippedAt/);
+assert.match(feedbackRoute, /authorizeExplorerApi/);
+assert.match(skipRoute, /authorizeExplorerApi/);
+assert.match(lifecycle, /trip\.viewerId !== viewerId[\s\S]*status: 404/);
+assert.match(lifecycle, /trip\.status === TripStatus\.FEEDBACK_COMPLETED/);
+assert.match(lifecycle, /trip\.status !== TripStatus\.ENDED/);
+assert.match(lifecycle, /status: TripStatus\.FEEDBACK_COMPLETED/);
+assert.match(feedback, /How was your visit/);
+assert.match(skipRoute, /completeViewerFeedback\(db, user\.id, tripId, null\)/);
+assert.match(currentRoute, /const ACTIVE = \[TripStatus\.REQUESTED, TripStatus\.OFFERED, TripStatus\.ACCEPTED, TripStatus\.IN_PROGRESS\]/);
+assert.doesNotMatch(reviews, /FeedbackForm|presence|mediaQuality/);
+assert.doesNotMatch(viewer, /SafetyReport|\bTip\b|payment|notification|moderation/);
+console.log("Private Feedback reload remediation validation passed: 22/22");

@@ -376,7 +376,7 @@ export async function listViewerHistory(db: Database, viewerId: string, take = 2
 }
 
 export async function listOperatorHistory(db: Database, operatorId: string, take = 25) {
-  return db.tripOffer.findMany({
+  const history = await db.tripOffer.findMany({
     where: { operatorId },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: Math.min(take, 50),
@@ -384,9 +384,20 @@ export async function listOperatorHistory(db: Database, operatorId: string, take
       status: true,
       createdAt: true,
       respondedAt: true,
-      trip: { select: TRIP_HISTORY_SELECT },
+      trip: { select: {
+        id: true, destination: true, requestedDuration: true, status: true,
+        requestedAt: true, offeredAt: true, acceptedAt: true, startedAt: true,
+        endedAt: true, cancelledAt: true, noOperatorAvailableAt: true,
+      } },
     },
   });
+  return history.map(item => ({
+    ...item,
+    trip: {
+      ...item.trip,
+      status: item.trip.status === TripStatus.FEEDBACK_COMPLETED ? TripStatus.ENDED : item.trip.status,
+    },
+  }));
 }
 
 export async function retryUnavailableTrip(db: Database, viewerId: string, tripId: string) {

@@ -159,6 +159,12 @@ async function main() {
     await startTrip(db, viewer.id, Role.VIEWER, first.id); await endTrip(db, viewer.id, Role.VIEWER, first.id);
     assert.equal((await completeViewerFeedback(db, viewer.id, first.id, null)).ok, true);
     assert.equal((await db.trip.findUniqueOrThrow({ where: { id: first.id } })).status, TripStatus.FEEDBACK_COMPLETED);
+    const viewerCompleted = (await listViewerHistory(db, viewer.id)).find(value => value.id === first.id);
+    const operatorCompleted = (await listOperatorHistory(db, first.operatorId!)).find(value => value.trip.id === first.id);
+    assert.equal(viewerCompleted?.status, TripStatus.FEEDBACK_COMPLETED);
+    assert.equal(operatorCompleted?.trip.status, TripStatus.ENDED);
+    assert.ok(!JSON.stringify(operatorCompleted).includes("feedbackCompletedAt"));
+    assert.ok(!JSON.stringify(operatorCompleted).includes("feedbackSkippedAt"));
     const next = await createTripRequest(db, viewer.id, { destinationId: destinationValue.id, meetingArea: "Entrance", requestedDuration: 30, accessibilityNeeds: [] }, () => `${run}-${randomUUID()}`);
     assert.equal(next.ok, true);
   });
