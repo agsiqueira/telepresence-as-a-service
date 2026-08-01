@@ -17,12 +17,12 @@ assert.match(migration, /EXCLUDE USING gist[\s\S]*tstzrange\("startAt", "endAt",
 assert.match(lifecycle, /SELECT "id" FROM "Trip"[\s\S]*FOR UPDATE/);
 assert.match(lifecycle, /SELECT "id" FROM "User"[\s\S]*FOR UPDATE/);
 assert.match(lifecycle, /trip\.operatorId !== actorId/);
-assert.match(lifecycle, /scheduledReservation\?\.startAt/);
+assert.match(lifecycle, /scheduledReservations\.find\(value => value\.status === "CONFIRMED"\)/);
 assert.match(lifecycle, /activeTripId: trip\.id/);
 assert.match(lifecycle, /Another Journey is currently active\. End it before starting this Journey\./);
 assert.match(lifecycle, /where: \{ id: trip\.operatorId, activeTripId: tripId \}[\s\S]*activeTripId: null/);
-assert.match(lifecycle, /scheduledReservation: \{ select: \{ id: true \} \}/);
-assert.match(lifecycle, /trip\.status === TripStatus\.ACCEPTED && trip\.scheduledReservation\) continue/);
+assert.match(lifecycle, /scheduledReservations: \{ where: \{ status: "CONFIRMED" \}/);
+assert.match(lifecycle, /trip\.status === TripStatus\.ACCEPTED && trip\.scheduledReservations\.length\) continue/);
 assert.match(startRoute, /authorizeApiUser/);
 const startAndEnd = (lifecycle.match(/export async function startTrip[\s\S]*?export async function cancelTrip/)?.[0] ?? "") + (lifecycle.match(/export async function endTrip[\s\S]*?export type FeedbackInput/)?.[0] ?? "");
 assert.doesNotMatch(startAndEnd, /releasedAt|status: "RELEASED"|scheduledJourneyReservation\.update/);

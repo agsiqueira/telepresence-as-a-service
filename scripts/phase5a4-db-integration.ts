@@ -25,7 +25,7 @@ async function fixture(base: Awaited<ReturnType<typeof setup>>, start = at(120),
 }
 async function accepted(value: Awaited<ReturnType<typeof fixture>>) {
   const result = await acceptProposal(db, value.explorer.id, value.request.id, value.proposal.id, {}, decisionTime); assert.equal(result.ok, true); if (!result.ok) throw new Error("acceptance failed");
-  return { ...value, agreement: result.value, trip: await db.trip.findUniqueOrThrow({ where: { id: result.value.tripId } }), reservation: await db.scheduledJourneyReservation.findUniqueOrThrow({ where: { agreementId: result.value.id } }) };
+  return { ...value, agreement: result.value, trip: await db.trip.findUniqueOrThrow({ where: { id: result.value.tripId } }), reservation: await db.scheduledJourneyReservation.findFirstOrThrow({ where: { agreementId: result.value.id, status: "CONFIRMED" } }) };
 }
 async function state(value: Awaited<ReturnType<typeof accepted>>) { return { trip: await db.trip.findUniqueOrThrow({ where: { id: value.trip.id } }), reservation: await db.scheduledJourneyReservation.findUniqueOrThrow({ where: { id: value.reservation.id } }), agreement: await db.agreement.findUniqueOrThrow({ where: { id: value.agreement.id } }) }; }
 

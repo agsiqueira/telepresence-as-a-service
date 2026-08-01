@@ -20,11 +20,12 @@ export async function GET(req: Request) {
   try {
     const access = await authorizeExplorerApi(); if (!access.ok) return access.response; const user = access.user;
     const teleporterView = new URL(req.url).searchParams.get("as") === "teleporter";
-    const confirmationReady = { OR: [{ status: TripStatus.IN_PROGRESS }, { status: TripStatus.ACCEPTED, agreement: { is: null } }, { status: TripStatus.ACCEPTED, agreement: { is: { agreedEarliestStart: { lte: new Date() } } } }] };
+    const acceptedReady = { status: TripStatus.ACCEPTED, OR: [{ agreement: { is: null } }, { scheduledReservations: { some: { status: "CONFIRMED" as const, startAt: { lte: new Date() } } } }, { agreement: { is: { scheduledReservations: { none: {} }, agreedEarliestStart: { lte: new Date() } } } }] };
+    const confirmationReady = { OR: [{ status: TripStatus.IN_PROGRESS }, acceptedReady] };
     const trip = await db.trip.findFirst({
       where: teleporterView
         ? { operatorId: user.id, AND: [confirmationReady] }
-        : { viewerId: user.id, AND: [{ status: { in: ACTIVE } }, { OR: [{ status: { in: [TripStatus.REQUESTED, TripStatus.OFFERED, TripStatus.IN_PROGRESS] } }, { status: TripStatus.ACCEPTED, agreement: { is: null } }, { status: TripStatus.ACCEPTED, agreement: { is: { agreedEarliestStart: { lte: new Date() } } } }] }] },
+        : { viewerId: user.id, AND: [{ status: { in: ACTIVE } }, { OR: [{ status: { in: [TripStatus.REQUESTED, TripStatus.OFFERED, TripStatus.IN_PROGRESS] } }, acceptedReady] }] },
       orderBy: { requestedAt: "desc" },
       select: SELECT,
     });

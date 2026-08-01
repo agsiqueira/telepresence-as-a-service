@@ -29,7 +29,7 @@ async function accept(f: Awaited<ReturnType<typeof proposalFixture>>, selected =
 async function accepted(f: Awaited<ReturnType<typeof proposalFixture>>, selected = f.start) {
   const result = await accept(f, selected); assert.equal(result.ok, true); if (!result.ok) throw new Error("Acceptance failed");
   const trip = await db.trip.findUniqueOrThrow({ where: { id: result.value.tripId } });
-  const reservation = await db.scheduledJourneyReservation.findUniqueOrThrow({ where: { agreementId: result.value.id } });
+  const reservation = await db.scheduledJourneyReservation.findFirstOrThrow({ where: { agreementId: result.value.id, status: "CONFIRMED" } });
   return { result, trip, reservation };
 }
 async function noPartial(requestId: string) {

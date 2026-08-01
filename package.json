@@ -68,6 +68,8 @@
     "test:unfar:phase5a3:db": "node scripts/run-phase5a3-db-tests.mjs",
     "test:unfar:phase5a4": "node scripts/validate-unfar-phase5a4.mjs",
     "test:unfar:phase5a4:db": "node scripts/run-phase5a4-db-tests.mjs",
+    "test:unfar:phase5b": "node scripts/validate-unfar-phase5b-rescheduling.mjs",
+    "test:unfar:phase5b:db": "node scripts/run-phase5b-reschedule-db-tests.mjs",
     "test:phase5e2:db": "node scripts/run-phase5e2-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"

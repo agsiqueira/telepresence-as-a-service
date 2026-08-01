@@ -42,19 +42,21 @@ export async function startTrip(
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
     return await serializable(db, async tx => {
-      let trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservation: { select: { startAt: true, status: true } } } } } });
+      let trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservations: { orderBy: { createdAt: "desc" }, select: { startAt: true, status: true } } } } } });
       if (!trip || !trip.operatorId) return { ok: false, status: 404, error: "Not found" };
-      const isScheduled = Boolean(trip.agreement?.scheduledReservation);
+      const currentReservation = trip.agreement?.scheduledReservations.find(value => value.status === "CONFIRMED");
+      const isScheduled = Boolean(currentReservation);
       if (isScheduled) {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
-        trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservation: { select: { startAt: true, status: true } } } } } });
+        trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservations: { orderBy: { createdAt: "desc" }, select: { startAt: true, status: true } } } } } });
         if (!trip || !trip.operatorId) return { ok: false, status: 404, error: "Not found" };
       }
       if (isScheduled ? trip.operatorId !== actorId : !ownsTrip(trip, actorId, role)) {
         return { ok: false, status: 404, error: "Not found" };
       }
       if (trip.status !== TripStatus.ACCEPTED && trip.status !== TripStatus.IN_PROGRESS) return conflict("Visit cannot be started");
-      const scheduledStart = trip.agreement?.scheduledReservation?.startAt ?? trip.agreement?.agreedEarliestStart;
+      const lockedCurrent = trip.agreement?.scheduledReservations.find(value => value.status === "CONFIRMED");
+      const scheduledStart = lockedCurrent?.startAt ?? (trip.agreement?.scheduledReservations.length ? undefined : trip.agreement?.agreedEarliestStart);
       if (trip.status === TripStatus.ACCEPTED && scheduledStart && scheduledStart > now) return conflict("Confirmed Journey has not reached its agreed start time");
       if (isScheduled) {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${trip.operatorId} FOR UPDATE`);
@@ -88,7 +90,7 @@ export async function cancelTrip(
   try {
     return await serializable(db, async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
-      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { scheduledReservation: { select: { id: true, status: true } } } });
+      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true, status: true }, take: 1 } } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip };
       const actsAsViewer = trip.viewerId === actorId;
@@ -119,9 +121,10 @@ export async function cancelTrip(
       });
       if (changed.count !== 1) return conflict("Visit changed while cancellation was processed");
 
-      if (trip.status === TripStatus.ACCEPTED && trip.scheduledReservation?.status === "CONFIRMED") {
+      const currentReservation = trip.scheduledReservations[0];
+      if (trip.status === TripStatus.ACCEPTED && currentReservation?.status === "CONFIRMED") {
         await tx.scheduledJourneyReservation.updateMany({
-          where: { id: trip.scheduledReservation.id, tripId, status: "CONFIRMED", releasedAt: null },
+          where: { id: currentReservation.id, tripId, status: "CONFIRMED", releasedAt: null },
           data: { status: "RELEASED", releasedAt: now },
         });
       }
@@ -270,11 +273,11 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const assignedTrips = await tx.trip.findMany({
       where: { status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] }, operatorId: { not: null } },
-      select: { id: true, operatorId: true, status: true, scheduledReservation: { select: { id: true } } },
+      select: { id: true, operatorId: true, status: true, scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true }, take: 1 } },
       take: 50,
     });
     for (const trip of assignedTrips) {
-      if (trip.status === TripStatus.ACCEPTED && trip.scheduledReservation) continue;
+      if (trip.status === TripStatus.ACCEPTED && trip.scheduledReservations.length) continue;
       const reservation = await tx.user.count({ where: { id: trip.operatorId!, activeTripId: trip.id } });
       if (reservation) continue;
       const repaired = await tx.user.updateMany({
@@ -297,20 +300,22 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const abandonedAccepted = await tx.trip.findMany({
       where: { status: TripStatus.ACCEPTED, acceptedAt: { lte: new Date(now.getTime() - RECOVERY_WINDOWS.acceptedMs) } },
-      select: { id: true, operatorId: true, agreement: { select: { agreedEarliestStart: true, agreedLatestStart: true } }, scheduledReservation: { select: { id: true, status: true } } },
+      select: { id: true, operatorId: true, agreement: { select: { agreedEarliestStart: true, agreedLatestStart: true } }, scheduledReservations: { orderBy: { createdAt: "desc" }, select: { id: true, status: true, startAt: true, endAt: true } } },
       orderBy: { acceptedAt: "asc" },
       take: 50,
     });
     for (const trip of abandonedAccepted) {
-      const scheduledBoundary = trip.agreement?.agreedLatestStart ?? trip.agreement?.agreedEarliestStart;
+      const currentReservation = trip.scheduledReservations.find(value => value.status === "CONFIRMED");
+      if (trip.scheduledReservations.length && !currentReservation) continue;
+      const scheduledBoundary = currentReservation?.startAt ?? trip.agreement?.agreedLatestStart ?? trip.agreement?.agreedEarliestStart;
       if (scheduledBoundary && scheduledBoundary.getTime() + RECOVERY_WINDOWS.acceptedMs > now.getTime()) continue;
       const changed = await tx.trip.updateMany({
         where: { id: trip.id, status: TripStatus.ACCEPTED },
         data: { status: TripStatus.CANCELLED, cancelledAt: now },
       });
-      if (changed.count && trip.scheduledReservation?.status === "CONFIRMED") {
+      if (changed.count && currentReservation?.status === "CONFIRMED") {
         await tx.scheduledJourneyReservation.updateMany({
-          where: { id: trip.scheduledReservation.id, tripId: trip.id, status: "CONFIRMED", releasedAt: null },
+          where: { id: currentReservation.id, tripId: trip.id, status: "CONFIRMED", releasedAt: null },
           data: { status: "RELEASED", releasedAt: now },
         });
       }

@@ -25,7 +25,7 @@ async function fixture(operatorCount = 1) {
 }
 
 async function verify(label: string, requestId: string) {
-  const request = await db.journeyRequest.findUniqueOrThrow({ where: { id: requestId }, include: { proposals: true, agreement: { include: { scheduledReservation: true } }, trip: true } });
+  const request = await db.journeyRequest.findUniqueOrThrow({ where: { id: requestId }, include: { proposals: true, agreement: { include: { scheduledReservations: { where: { status: "CONFIRMED" }, take: 1 } } }, trip: true } });
   const accepted = request.proposals.filter(p => p.status === ProposalStatus.ACCEPTED);
   assert.ok(accepted.length <= 1, `${label}: more than one accepted Proposal`);
   assert.equal(Boolean(request.agreement), Boolean(request.trip), `${label}: partial Agreement/Trip`);
@@ -35,7 +35,7 @@ async function verify(label: string, requestId: string) {
     assert.equal(request.tripId, request.trip!.id, `${label}: linked Trip mismatch`);
     assert.equal(request.agreement.tripId, request.trip!.id, `${label}: Agreement Trip mismatch`);
     assert.equal(request.agreement.proposalId, accepted[0].id, `${label}: Agreement Proposal mismatch`);
-    assert.equal(request.agreement.scheduledReservation?.tripId, request.trip!.id, `${label}: reservation mismatch`);
+    assert.equal(request.agreement.scheduledReservations[0]?.tripId, request.trip!.id, `${label}: reservation mismatch`);
     assert.equal(request.trip!.status, TripStatus.ACCEPTED, `${label}: Trip not accepted`);
   } else {
     assert.equal(accepted.length, 0, `${label}: accepted Proposal without Agreement`);

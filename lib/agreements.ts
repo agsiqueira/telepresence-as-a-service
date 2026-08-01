@@ -29,6 +29,12 @@ const SNAPSHOT_SELECT = {
 
 const PRIVATE_SELECT = { ...SNAPSHOT_SELECT, privateMeetingSnapshot: true } satisfies Prisma.AgreementSelect;
 const ADMIN_SELECT = { ...SNAPSHOT_SELECT, explorerId: true, teleporterId: true } satisfies Prisma.AgreementSelect;
+const withCurrentSchedule = <T extends { agreedStartAt: Date | null; agreedDurationMinutes: number; scheduledReservations: Array<{ startAt: Date; endAt: Date }> }>(agreement: T) => {
+  const { scheduledReservations, ...safe } = agreement;
+  const current = scheduledReservations[0];
+  return current ? { ...safe, agreedStartAt: current.startAt, agreedDurationMinutes: Math.round((current.endAt.getTime() - current.startAt.getTime()) / 60_000) } : safe;
+};
+const currentReservation = { where: { status: "CONFIRMED" as const }, orderBy: { createdAt: "desc" as const }, select: { startAt: true, endAt: true }, take: 1 };
 
 async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) {
   for (let attempt = 0; ; attempt += 1) {
@@ -138,17 +144,19 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
 }
 
 export async function getExplorerAgreement(db: Database, explorerId: string, requestId: string) {
-  return db.agreement.findFirst({ where: { journeyRequestId: requestId, explorerId }, select: PRIVATE_SELECT });
+  const agreement = await db.agreement.findFirst({ where: { journeyRequestId: requestId, explorerId }, select: { ...PRIVATE_SELECT, scheduledReservations: currentReservation } });
+  return agreement ? withCurrentSchedule(agreement) : null;
 }
 
 export async function listTeleporterAgreements(db: Database, teleporterId: string) {
-  return db.agreement.findMany({ where: { teleporterId }, orderBy: [{ confirmedAt: "desc" }, { id: "desc" }], take: 50, select: PRIVATE_SELECT });
+  return (await db.agreement.findMany({ where: { teleporterId }, orderBy: [{ confirmedAt: "desc" }, { id: "desc" }], take: 50, select: { ...PRIVATE_SELECT, scheduledReservations: currentReservation } })).map(withCurrentSchedule);
 }
 
 export async function getTeleporterAgreement(db: Database, teleporterId: string, id: string) {
-  return db.agreement.findFirst({ where: { id, teleporterId }, select: PRIVATE_SELECT });
+  const agreement = await db.agreement.findFirst({ where: { id, teleporterId }, select: { ...PRIVATE_SELECT, scheduledReservations: currentReservation } });
+  return agreement ? withCurrentSchedule(agreement) : null;
 }
 
 export async function listAdminAgreements(db: Database) {
-  return db.agreement.findMany({ orderBy: [{ confirmedAt: "desc" }, { id: "desc" }], take: 100, select: ADMIN_SELECT });
+  return (await db.agreement.findMany({ orderBy: [{ confirmedAt: "desc" }, { id: "desc" }], take: 100, select: { ...ADMIN_SELECT, scheduledReservations: currentReservation } })).map(withCurrentSchedule);
 }

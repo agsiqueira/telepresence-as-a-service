@@ -8,8 +8,10 @@ const service = read("lib/agreements.ts");
 const lifecycle = read("lib/trip-lifecycle.ts");
 
 assert.match(schema, /enum ScheduledJourneyReservationStatus\s*{\s*CONFIRMED\s*RELEASED\s*}/s);
-assert.match(schema, /model ScheduledJourneyReservation\s*{[\s\S]*id\s+String\s+@id @default\(uuid\(\)\) @db\.Uuid[\s\S]*agreementId\s+String\s+@unique[\s\S]*tripId\s+String\s+@unique[\s\S]*startAt\s+DateTime\s+@db\.Timestamptz\(3\)[\s\S]*endAt\s+DateTime\s+@db\.Timestamptz\(3\)[\s\S]*releasedAt\s+DateTime\?\s+@db\.Timestamptz\(3\)/);
-for (const owner of [/scheduledReservations\s+ScheduledJourneyReservation\[\]/, /scheduledReservation\s+ScheduledJourneyReservation\?/]) assert.match(schema, owner);
+assert.match(schema, /model ScheduledJourneyReservation\s*{[\s\S]*id\s+String\s+@id @default\(uuid\(\)\) @db\.Uuid[\s\S]*agreementId\s+String[\s\S]*tripId\s+String[\s\S]*startAt\s+DateTime\s+@db\.Timestamptz\(3\)[\s\S]*endAt\s+DateTime\s+@db\.Timestamptz\(3\)[\s\S]*releasedAt\s+DateTime\?\s+@db\.Timestamptz\(3\)/);
+assert.match(schema, /scheduledReservations\s+ScheduledJourneyReservation\[\]/);
+assert.match(migration, /ScheduledJourneyReservation_agreementId_key/);
+assert.match(migration, /ScheduledJourneyReservation_tripId_key/);
 assert.match(migration, /CREATE EXTENSION IF NOT EXISTS btree_gist/);
 assert.match(migration, /"endAt" > "startAt"/);
 assert.match(migration, /"status" = 'CONFIRMED' AND "releasedAt" IS NULL/);
