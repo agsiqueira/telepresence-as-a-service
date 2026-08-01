@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
 import FeedbackForm from "@/components/FeedbackForm";
 import JourneyReviewPanel from "@/components/JourneyReviewPanel";
+import SafetyReportDialog from "@/components/SafetyReportDialog";
 import ProfileSettings from "@/components/ProfileSettings";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
@@ -295,7 +296,7 @@ export default function ViewerPage() {
         )}
         <section className="mt-10" aria-labelledby="viewer-history-heading">
           <h2 id="viewer-history-heading" className="text-xl font-semibold">Recent visits</h2>
-          {history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No visits yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map(item => <li key={item.id} className="p-3"><p className="font-medium">{item.destination}</p><p className="text-sm text-gray-600">{item.status.replaceAll("_", " ").toLowerCase()} · {item.requestedDuration ?? "—"} min</p>{item.status==="ENDED"&&<section className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3" aria-labelledby={`private-feedback-${item.id}`}><h3 id={`private-feedback-${item.id}`} className="font-semibold text-blue-950">Private visit feedback</h3><p className="mt-1 text-sm text-blue-950">Help evaluate the visit experience. Your answers are internal research feedback and are not shared with the Teleporter or used in Journey reviews.</p><button type="button" aria-expanded={feedbackTripId===item.id} aria-controls={`private-feedback-form-${item.id}`} onClick={()=>setFeedbackTripId(current=>current===item.id?null:item.id)} className="mt-3 min-h-11 rounded-lg border border-blue-800 bg-white px-4 font-semibold text-blue-950 focus-visible:ring-2">{feedbackTripId===item.id?"Close private feedback":"Complete private feedback"}</button>{feedbackTripId===item.id&&<div id={`private-feedback-form-${item.id}`}><FeedbackForm tripId={item.id} onDone={()=>{setFeedbackTripId(null);setHistoryRefresh(value=>value+1)}}/></div>}</section>}{(item.status==="ENDED"||item.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.id}/>}</li>)}</ul>}
+          {history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No visits yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map(item => <li key={item.id} className="p-3"><p className="font-medium">{item.destination}</p><p className="text-sm text-gray-600">{item.status.replaceAll("_", " ").toLowerCase()} · {item.requestedDuration ?? "—"} min</p>{item.status==="ENDED"&&<section className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3" aria-labelledby={`private-feedback-${item.id}`}><h3 id={`private-feedback-${item.id}`} className="font-semibold text-blue-950">Private visit feedback</h3><p className="mt-1 text-sm text-blue-950">Help evaluate the visit experience. Your answers are internal research feedback and are not shared with the Teleporter or used in Journey reviews.</p><button type="button" aria-expanded={feedbackTripId===item.id} aria-controls={`private-feedback-form-${item.id}`} onClick={()=>setFeedbackTripId(current=>current===item.id?null:item.id)} className="mt-3 min-h-11 rounded-lg border border-blue-800 bg-white px-4 font-semibold text-blue-950 focus-visible:ring-2">{feedbackTripId===item.id?"Close private feedback":"Complete private feedback"}</button>{feedbackTripId===item.id&&<div id={`private-feedback-form-${item.id}`}><FeedbackForm tripId={item.id} onDone={()=>{setFeedbackTripId(null);setHistoryRefresh(value=>value+1)}}/></div>}</section>}{["ACCEPTED","IN_PROGRESS","ENDED","FEEDBACK_COMPLETED","CANCELLED"].includes(item.status)&&<SafetyReportDialog tripId={item.id}/>} {(item.status==="ENDED"||item.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.id}/>}</li>)}</ul>}
         </section>
         <ProfileSettings role="viewer" />
       </div>
@@ -323,7 +324,7 @@ export default function ViewerPage() {
       );
     }
     if (trip?.status === "IN_PROGRESS") {
-      return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-6 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active visit</p><h1 className="mt-2 text-2xl font-bold">{trip.destination}</h1><p className="mt-4 text-gray-300" role="status">Reconnecting to the live visit…</p>{pollingMessage && <><p className="mt-3 text-amber-200">{pollingMessage}</p><button type="button" onClick={() => setPollRetry(value => value + 1)} className="mt-5 min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950">Try media again</button></>}<button type="button" onClick={leaveCall} className="mt-5 min-h-11 w-full rounded-full border border-red-400 px-5 font-semibold text-red-200">Leave visit</button></section></main>;
+      return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-6 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active visit</p><h1 className="mt-2 text-2xl font-bold">{trip.destination}</h1><p className="mt-4 text-gray-300" role="status">Reconnecting to the live visit…</p>{pollingMessage && <><p className="mt-3 text-amber-200">{pollingMessage}</p><button type="button" onClick={() => setPollRetry(value => value + 1)} className="mt-5 min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950">Try media again</button></>}<SafetyReportDialog tripId={trip.id}/><button type="button" onClick={leaveCall} className="mt-5 min-h-11 w-full rounded-full border border-red-400 px-5 font-semibold text-red-200">Leave visit</button></section></main>;
     }
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
@@ -332,7 +333,7 @@ export default function ViewerPage() {
           {trip?.status === "ACCEPTED" ? "Request accepted. Waiting for the visit to begin" : trip?.status === "OFFERED" || trip?.hasOffer ? "An operator is reviewing your request" : `Looking for an operator for ${trip?.destination}…`}
         </h1>
         <p className="text-gray-500 mb-8">This usually takes a moment.</p>
-        <button
+        {trip?.status === "ACCEPTED" && <SafetyReportDialog tripId={trip.id}/>}<button
           onClick={cancelTrip}
           className="border border-gray-300 px-5 py-2 rounded-md"
         >
@@ -344,7 +345,7 @@ export default function ViewerPage() {
 
   if (phase === "call" && videoToken && trip?.acceptedAt) {
     return (
-      <><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /><VideoRoom
+      <><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /><SafetyReportDialog tripId={trip.id}/><VideoRoom
         token={videoToken.token}
         serverUrl={videoToken.url}
         destination={trip.destination}

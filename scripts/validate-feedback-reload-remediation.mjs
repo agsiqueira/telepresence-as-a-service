@@ -33,5 +33,6 @@ assert.match(feedback, /How was your visit/);
 assert.match(skipRoute, /completeViewerFeedback\(db, user\.id, tripId, null\)/);
 assert.match(currentRoute, /const ACTIVE = \[TripStatus\.REQUESTED, TripStatus\.OFFERED, TripStatus\.ACCEPTED, TripStatus\.IN_PROGRESS\]/);
 assert.doesNotMatch(reviews, /FeedbackForm|presence|mediaQuality/);
-assert.doesNotMatch(viewer, /SafetyReport|\bTip\b|payment|notification|moderation/);
-console.log("Private Feedback reload remediation validation passed: 22/22");
+assert.doesNotMatch(viewer, /\bTip\b|payment|notification|moderation/);
+assert.doesNotMatch(feedback, /SafetyReport/);
+console.log("Private Feedback reload remediation validation passed: 23/23");
