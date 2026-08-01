@@ -24,6 +24,7 @@
     "safety-reporting-phase1-db-integration.ts",
     "safety-reporting-phase3-db-integration.ts",
     "safety-reporting-phase4a-db-integration.ts",
+    "safety-reporting-phase4b-db-integration.ts",
     "phase5a-db-integration.ts",
     "phase5b-db-integration.ts",
     "phase5c-db-integration.ts",
