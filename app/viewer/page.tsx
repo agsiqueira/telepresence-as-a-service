@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import VideoRoom from "@/components/VideoRoom";
 import FeedbackForm from "@/components/FeedbackForm";
+import JourneyReviewPanel from "@/components/JourneyReviewPanel";
 import ProfileSettings from "@/components/ProfileSettings";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
@@ -292,7 +293,7 @@ export default function ViewerPage() {
         )}
         <section className="mt-10" aria-labelledby="viewer-history-heading">
           <h2 id="viewer-history-heading" className="text-xl font-semibold">Recent visits</h2>
-          {history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No visits yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map(item => <li key={item.id} className="p-3"><p className="font-medium">{item.destination}</p><p className="text-sm text-gray-600">{item.status.replaceAll("_", " ").toLowerCase()} · {item.requestedDuration ?? "—"} min</p></li>)}</ul>}
+          {history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No visits yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map(item => <li key={item.id} className="p-3"><p className="font-medium">{item.destination}</p><p className="text-sm text-gray-600">{item.status.replaceAll("_", " ").toLowerCase()} · {item.requestedDuration ?? "—"} min</p>{(item.status==="ENDED"||item.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.id}/>}</li>)}</ul>}
         </section>
         <ProfileSettings role="viewer" />
       </div>
