@@ -4,6 +4,8 @@ import { OfferStatus, Prisma, PrismaClient, Role, TripStatus } from "@prisma/cli
 import { assignNextOperator, expireAndReassignOffers } from "./marketplace";
 
 type Database = PrismaClient;
+export const REVIEW_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const reviewDeadline = (endedAt: Date) => new Date(endedAt.getTime() + REVIEW_WINDOW_MS);
 export type LifecycleFailure = { ok: false; status: 400 | 404 | 409; error: string };
 export type LifecycleResult<T> = { ok: true; value: T } | LifecycleFailure;
 
@@ -168,7 +170,7 @@ export async function endTrip(
       if (trip.status !== TripStatus.IN_PROGRESS) return conflict("Visit is not in progress");
       const changed = await tx.trip.updateMany({
         where: { id: tripId, status: TripStatus.IN_PROGRESS, operatorId: trip.operatorId },
-        data: { status: TripStatus.ENDED, endedAt: now },
+        data: { status: TripStatus.ENDED, endedAt: now, ...(trip.operatorId && trip.viewerId !== trip.operatorId ? { reviewDeadlineAt: reviewDeadline(now) } : {}) },
       });
       if (changed.count !== 1) return conflict("Visit changed while ending was processed");
       if (trip.operatorId) {
@@ -273,7 +275,7 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const assignedTrips = await tx.trip.findMany({
       where: { status: { in: [TripStatus.ACCEPTED, TripStatus.IN_PROGRESS] }, operatorId: { not: null } },
-      select: { id: true, operatorId: true, status: true, scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true }, take: 1 } },
+      select: { id: true, viewerId: true, operatorId: true, status: true, scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true }, take: 1 } },
       take: 50,
     });
     for (const trip of assignedTrips) {
@@ -288,7 +290,7 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
       if (trip.status === TripStatus.ACCEPTED) {
         await tx.trip.updateMany({ where: { id: trip.id, status: TripStatus.ACCEPTED, operatorId: trip.operatorId }, data: { status: TripStatus.CANCELLED, cancelledAt: now } });
       } else {
-        await tx.trip.updateMany({ where: { id: trip.id, status: TripStatus.IN_PROGRESS, operatorId: trip.operatorId }, data: { status: TripStatus.ENDED, endedAt: now } });
+        await tx.trip.updateMany({ where: { id: trip.id, status: TripStatus.IN_PROGRESS, operatorId: trip.operatorId }, data: { status: TripStatus.ENDED, endedAt: now, ...(trip.viewerId !== trip.operatorId ? { reviewDeadlineAt: reviewDeadline(now) } : {}) } });
       }
     }
 
@@ -324,13 +326,13 @@ export async function recoverStaleTrips(db: Database, now = new Date()) {
 
     const active = await tx.trip.findMany({
       where: { status: TripStatus.IN_PROGRESS, startedAt: { not: null } },
-      select: { id: true, operatorId: true, startedAt: true, requestedDuration: true },
+      select: { id: true, viewerId: true, operatorId: true, startedAt: true, requestedDuration: true },
       take: 50,
     });
     for (const trip of active) {
       const maximum = ((trip.requestedDuration ?? 60) * 60 * 1000) + RECOVERY_WINDOWS.inProgressGraceMs;
       if (!trip.startedAt || trip.startedAt.getTime() + maximum > now.getTime()) continue;
-      const changed = await tx.trip.updateMany({ where: { id: trip.id, status: TripStatus.IN_PROGRESS }, data: { status: TripStatus.ENDED, endedAt: now } });
+      const changed = await tx.trip.updateMany({ where: { id: trip.id, status: TripStatus.IN_PROGRESS }, data: { status: TripStatus.ENDED, endedAt: now, ...(trip.operatorId && trip.viewerId !== trip.operatorId ? { reviewDeadlineAt: reviewDeadline(now) } : {}) } });
       if (changed.count && trip.operatorId) await tx.user.updateMany({ where: { id: trip.operatorId, activeTripId: trip.id }, data: { activeTripId: null } });
     }
 

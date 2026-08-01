@@ -95,6 +95,11 @@ enum ScheduledJourneyRescheduleStatus {
   SUPERSEDED
 }
 
+enum JourneyReviewRole {
+  EXPLORER
+  TELEPORTER
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -129,6 +134,8 @@ model User {
   agreementsAsTeleporter  Agreement[]                          @relation("TeleporterAgreements")
   scheduledReservations   ScheduledJourneyReservation[]
   proposedReschedules     ScheduledJourneyRescheduleProposal[]
+  journeyReviewsAuthored  JourneyReview[]                      @relation("JourneyReviewsAuthored")
+  journeyReviewsReceived  JourneyReview[]                      @relation("JourneyReviewsReceived")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -274,6 +281,7 @@ model Trip {
   noOperatorAvailableAt DateTime?
   feedbackCompletedAt   DateTime?
   feedbackSkippedAt     DateTime?
+  reviewDeadlineAt      DateTime?    @db.Timestamptz(3)
   retryOfTripId         String?      @unique
 
   feedback              Feedback[]
@@ -282,6 +290,7 @@ model Trip {
   agreement             Agreement?
   scheduledReservations ScheduledJourneyReservation[]
   rescheduleProposals   ScheduledJourneyRescheduleProposal[]
+  reviews               JourneyReview[]
 
   @@unique([id, viewerId, operatorId])
   @@index([status])
@@ -453,4 +462,24 @@ model Feedback {
   moodBefore   Int? // 0-10 VAS
   moodAfter    Int? // 0-10 VAS
   createdAt    DateTime @default(now())
+}
+
+model JourneyReview {
+  id           String            @id @default(uuid()) @db.Uuid
+  trip         Trip              @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId       String
+  reviewer     User              @relation("JourneyReviewsAuthored", fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewerId   String
+  reviewee     User              @relation("JourneyReviewsReceived", fields: [revieweeId], references: [id], onDelete: Restrict)
+  revieweeId   String
+  reviewerRole JourneyReviewRole
+  revieweeRole JourneyReviewRole
+  rating       Int
+  comment      String?           @db.VarChar(1000)
+  submittedAt  DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([tripId, reviewerId])
+  @@unique([tripId, reviewerRole])
+  @@index([revieweeId, revieweeRole, submittedAt])
+  @@index([tripId, submittedAt])
 }
