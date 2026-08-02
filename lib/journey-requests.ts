@@ -1,6 +1,7 @@
 import "server-only";
 
 import { AccountStatus, JourneyRequestStatus, Prisma, Role, type PrismaClient } from "@prisma/client";
+import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "@/lib/safety-restriction-lock";
 
 type Database = PrismaClient;
 const CURRENCIES = new Set(["AUD", "BRL", "CAD", "CHF", "EUR", "GBP", "JPY", "MXN", "NZD", "USD"]);
@@ -29,6 +30,8 @@ async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient
     catch (error) { if (!serializationFailure(error) || attempt >= 2) throw error; }
   }
 }
+const safetyLocked = <T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+  db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 
 function normalizedText(value: unknown, max: number, required = true) {
   if (typeof value !== "string") return null;
@@ -83,7 +86,9 @@ export async function materializeExpiredJourneyRequests(db: Database | Prisma.Tr
 
 export async function createJourneyRequest(db: Database, explorerId: string, input: JourneyRequestInput, now = new Date()) {
   try {
-    return await serializable(db, async tx => {
+    return await safetyLocked(db, async tx => {
+      await acquireSafetyRestrictionParticipantLocks(tx, [explorerId]);
+      if (await hasEffectiveSafetyRestrictionInTransaction(tx, [explorerId], now)) return fail(409, "Account safety restriction prevents a new Journey Request");
       const explorer = await tx.user.findUnique({ where: { id: explorerId }, select: { role: true, accountStatus: true } });
       if (!explorer || explorer.accountStatus !== AccountStatus.ACTIVE || explorer.role === Role.ADMIN) return fail(404, "Explorer not found");
       if (input.expiresAt <= now || input.latestStart <= input.earliestStart) return fail(409, "Journey Request window is no longer valid");

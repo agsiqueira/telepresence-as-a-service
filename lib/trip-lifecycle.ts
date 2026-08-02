@@ -2,6 +2,7 @@ import "server-only";
 
 import { OfferStatus, Prisma, PrismaClient, Role, TripStatus } from "@prisma/client";
 import { assignNextOperator, expireAndReassignOffers } from "./marketplace";
+import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "./safety-restriction-lock";
 
 type Database = PrismaClient;
 export const REVIEW_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
@@ -25,6 +26,8 @@ async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient
     }
   }
 }
+const safetyLocked = <T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+  db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 
 function ownsTrip(
   trip: { viewerId: string; operatorId: string | null },
@@ -43,9 +46,11 @@ export async function startTrip(
   now = new Date()
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
-    return await serializable(db, async tx => {
+    return await safetyLocked(db, async tx => {
       let trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: { select: { agreedEarliestStart: true, scheduledReservations: { orderBy: { createdAt: "desc" }, select: { startAt: true, status: true } } } } } });
       if (!trip || !trip.operatorId) return { ok: false, status: 404, error: "Not found" };
+      await acquireSafetyRestrictionParticipantLocks(tx, [trip.viewerId, trip.operatorId]);
+      if (await hasEffectiveSafetyRestrictionInTransaction(tx, [trip.viewerId, trip.operatorId], now)) return conflict("Account safety restriction prevents starting this Journey");
       const currentReservation = trip.agreement?.scheduledReservations.find(value => value.status === "CONFIRMED");
       const isScheduled = Boolean(currentReservation);
       if (isScheduled) {

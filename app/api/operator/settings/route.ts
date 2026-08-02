@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { deactivatedAccountApiResponse, getCurrentUser } from "@/lib/current-user";
+import { deactivatedAccountApiResponse, enforceAccountSafetyForActivity, getCurrentUser } from "@/lib/current-user";
 import { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES, profileIsComplete } from "@/lib/marketplace";
 import { updateOperatorSettings, validateSettingsInput } from "@/lib/phase3-services";
 import { evaluateOperatorReadiness, publicDisplayName } from "@/lib/profiles";
@@ -30,6 +30,7 @@ export async function PUT(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
   const inactive = deactivatedAccountApiResponse(user); if (inactive) return inactive;
   if (!user.operatorProfile) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const restricted = await enforceAccountSafetyForActivity(user.id); if (restricted) return restricted;
   const input = validateSettingsInput(await req.json());
   if (!input.ok) return NextResponse.json({ error: input.error }, { status: input.status });
   const result = await updateOperatorSettings(db, user.id, input.value);

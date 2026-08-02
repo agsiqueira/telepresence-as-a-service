@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authorizeTeleporterActivityApi } from "@/lib/current-user";
+import { authorizeTeleporterActivityApi, enforceAccountSafetyForActivity } from "@/lib/current-user";
 import { evaluateOperatorReadiness } from "@/lib/profiles";
 
 export async function POST(req: NextRequest) {
  try {
-  const access = await authorizeTeleporterActivityApi(); if (!access.ok) return access.response; const user = access.user;
+  const access = await authorizeTeleporterActivityApi(); if (!access.ok) return access.response; const user = access.user; const restricted = await enforceAccountSafetyForActivity(user.id); if (restricted) return restricted;
 
   const body = await req.json();
   if (!body || typeof body !== "object" || Object.keys(body).some(key => key !== "online") || typeof body.online !== "boolean") return NextResponse.json({ error: "Online status is required" }, { status: 400 });

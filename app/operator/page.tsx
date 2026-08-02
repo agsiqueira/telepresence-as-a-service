@@ -6,6 +6,7 @@ import ProfileSettings from "@/components/ProfileSettings";
 import TeleporterAgreements from "@/components/TeleporterAgreements";
 import JourneyReviewPanel from "@/components/JourneyReviewPanel";
 import SafetyReportDialog from "@/components/SafetyReportDialog";
+import AccountSafetyRestrictionNotice from "@/components/AccountSafetyRestrictionNotice";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
@@ -330,6 +331,7 @@ export default function OperatorPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
+      <AccountSafetyRestrictionNotice />
       <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase text-spartan-green">Operator marketplace</p><h1 className="text-3xl font-bold">Service dashboard</h1></div><button type="button" disabled={!setupComplete} onClick={toggleOnline} className={`min-h-12 rounded-full px-5 font-semibold disabled:opacity-40 ${online ? "bg-spartan-green text-white" : "border border-spartan-green text-spartan-green"}`}>{online ? "Online" : "Go online"}</button></div>
       {message && <p className="mt-4 rounded-lg bg-gray-100 p-3 text-sm" role="status">{message}</p>}
       <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />

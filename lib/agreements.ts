@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { AccountStatus, AgreementStatus, JourneyRequestStatus, OperatorPilotStatus, Prisma, ProposalStatus, Role, TripStatus, type PrismaClient } from "@prisma/client";
 import { profileIsComplete } from "@/lib/marketplace";
 import { publicDisplayName } from "@/lib/profiles";
+import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "@/lib/safety-restriction-lock";
 
 type Database = PrismaClient;
 type Failure = { ok: false; status: 400 | 404 | 409; error: string };
@@ -42,6 +43,8 @@ async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient
     catch (error) { if (!retryable(error) || attempt >= 2) throw error; }
   }
 }
+const safetyLocked = <T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+  db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 
 type AcceptanceInput = Record<string, unknown> & { scheduledStartAt?: unknown };
 const explicitInstant = (value: unknown) => {
@@ -52,9 +55,14 @@ const explicitInstant = (value: unknown) => {
 
 export async function acceptProposal(db: Database, explorerId: string, requestId: string, proposalId: string, input: AcceptanceInput = {}, now = new Date()) {
   try {
-    return await serializable(db, async tx => {
+    return await safetyLocked(db, async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "JourneyRequest" WHERE "id" = ${requestId} FOR UPDATE`);
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Proposal" WHERE "id" = ${proposalId} FOR UPDATE`);
+
+      const pairing = await tx.proposal.findFirst({ where: { id: proposalId, journeyRequestId: requestId }, select: { teleporterId: true, journeyRequest: { select: { explorerId: true } } } });
+      if (!pairing || pairing.journeyRequest.explorerId !== explorerId) return fail(404, "Proposal not found");
+      await acquireSafetyRestrictionParticipantLocks(tx, [pairing.journeyRequest.explorerId, pairing.teleporterId]);
+      if (await hasEffectiveSafetyRestrictionInTransaction(tx, [pairing.journeyRequest.explorerId, pairing.teleporterId], now)) return fail(409, "Account safety restriction prevents confirming this Journey");
 
       const existing = await tx.agreement.findUnique({ where: { journeyRequestId: requestId }, select: { ...PRIVATE_SELECT, explorerId: true, proposalId: true } });
       if (existing) {

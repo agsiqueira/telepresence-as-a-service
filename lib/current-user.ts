@@ -3,6 +3,7 @@ import { AccountStatus, Role, type User } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { canInitiateTeleporterActivity, hasExplorerCapability } from "@/lib/capabilities";
+import { enforceNoActiveSafetyRestriction, SafetyRestrictionError } from "@/lib/safety-restrictions";
 
 export async function getCurrentUser() {
   const { userId } = auth();
@@ -81,4 +82,19 @@ export async function authorizeTeleporterActivityApi() {
   return canInitiateTeleporterActivity(access.user)
     ? access
     : { ok: false as const, response: NextResponse.json({ error: "Approved Teleporter capability is required" }, { status: 403 }) };
+}
+
+export async function enforceAccountSafetyForActivity(userId: string) {
+  try {
+    await enforceNoActiveSafetyRestriction(db, userId);
+    return null;
+  } catch (error) {
+    if (error instanceof SafetyRestrictionError && error.code === "ACCOUNT_SAFETY_RESTRICTED") {
+      return NextResponse.json(
+        { error: "This account has a temporary precautionary safety restriction.", code: error.code },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    throw error;
+  }
 }

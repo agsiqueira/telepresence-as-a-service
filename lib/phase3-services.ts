@@ -10,6 +10,7 @@ import {
   normalizedList,
 } from "./marketplace";
 import { cancelTrip, endTrip } from "./trip-lifecycle";
+import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "./safety-restriction-lock";
 
 type Database = PrismaClient;
 export type ServiceFailure = { ok: false; status: 400 | 403 | 404 | 409; error: string };
@@ -28,6 +29,9 @@ async function runSerializable<T>(db: Database, work: (tx: Prisma.TransactionCli
       if (!serializableConflict(error) || attempt >= 1) throw error;
     }
   }
+}
+async function runSafetyLocked<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) {
+  return db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
 export const PUBLIC_DESTINATION_SELECT = {
@@ -68,7 +72,9 @@ export async function createTripRequest(
   roomId = () => `trip-${randomUUID()}`
 ): Promise<ServiceResult<{ trip: Prisma.TripGetPayload<object>; created: boolean }>> {
   try {
-    return await runSerializable(db, async tx => {
+    return await runSafetyLocked(db, async tx => {
+      await acquireSafetyRestrictionParticipantLocks(tx, [viewerId]);
+      if (await hasEffectiveSafetyRestrictionInTransaction(tx, [viewerId])) return conflict("Account safety restriction prevents a new Journey");
       const participant = await tx.user.findUnique({
         where: { id: viewerId },
         select: { role: true, accountStatus: true },
@@ -138,8 +144,11 @@ export async function createTripRequest(
 
 export async function acceptTripOffer(db: Database, operatorId: string, tripId: string, now = new Date()) {
   try {
-    return await runSerializable(db, async tx => {
+    return await runSafetyLocked(db, async tx => {
       const current = await tx.trip.findUnique({ where: { id: tripId } });
+      if (!current) return conflict("Offer is no longer available");
+      await acquireSafetyRestrictionParticipantLocks(tx, [current.viewerId, operatorId]);
+      if (await hasEffectiveSafetyRestrictionInTransaction(tx, [current.viewerId, operatorId], now)) return conflict("Account safety restriction prevents accepting this Journey");
       if ((current?.status === TripStatus.ACCEPTED || current?.status === TripStatus.IN_PROGRESS) && current.operatorId === operatorId) {
         return { ok: true, value: current } as const;
       }

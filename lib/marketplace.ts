@@ -10,6 +10,7 @@ import {
   type User,
 } from "@prisma/client";
 export { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES } from "./marketplace-vocabulary";
+import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "./safety-restriction-lock";
 import { ALLOWED_ACCESSIBILITY, ALLOWED_DURATIONS, ALLOWED_LANGUAGES } from "./marketplace-vocabulary";
 
 export const OFFER_TIMEOUT_SECONDS = 30;
@@ -119,6 +120,8 @@ export async function assignNextOperator(
     take: 20,
   });
   for (const operator of operators) {
+    await acquireSafetyRestrictionParticipantLocks(tx, [trip.viewerId, operator.id]);
+    if (await hasEffectiveSafetyRestrictionInTransaction(tx, [trip.viewerId, operator.id], now)) continue;
     const reserved = await tx.user.updateMany({
       where: {
         id: operator.id,

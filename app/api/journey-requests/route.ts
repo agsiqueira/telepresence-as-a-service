@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authorizeExplorerApi } from "@/lib/current-user";
+import { authorizeExplorerApi, enforceAccountSafetyForActivity } from "@/lib/current-user";
 import { createJourneyRequest, listOwnedJourneyRequests, validateJourneyRequestInput } from "@/lib/journey-requests";
 
 export async function GET() {
@@ -10,6 +10,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const access = await authorizeExplorerApi(); if (!access.ok) return access.response;
+  const restricted = await enforceAccountSafetyForActivity(access.user.id); if (restricted) return restricted;
   try {
     const body: unknown = await req.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });

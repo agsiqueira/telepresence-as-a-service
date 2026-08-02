@@ -86,6 +86,8 @@
     "test:safety-reporting:phase4b:db": "node scripts/run-safety-reporting-phase4b-db-tests.mjs",
     "test:safety-reporting:phase4c": "node scripts/validate-safety-reporting-phase4c.mjs",
     "test:safety-reporting:phase4c:db": "node scripts/run-safety-reporting-phase4c-db-tests.mjs",
+    "test:safety-reporting:phase4d": "node scripts/validate-safety-reporting-phase4d.mjs",
+    "test:safety-reporting:phase4d:db": "node scripts/run-safety-reporting-phase4d-db-tests.mjs",
     "test:phase5e2:db": "node scripts/run-phase5e2-db-tests.mjs",
     "test:phase4:db": "node scripts/run-phase4-db-tests.mjs",
     "postinstall": "prisma generate"

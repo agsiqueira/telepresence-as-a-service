@@ -138,6 +138,33 @@ enum SafetyReportMessageAuthorType {
   PARTICIPANT
 }
 
+enum SafetyRestrictionParticipantRole {
+  REPORTER
+  REPORTED_PARTICIPANT
+}
+
+enum SafetyRestrictionStatus {
+  PROPOSED
+  ACTIVE
+  REJECTED
+  REVERSED
+  EXPIRED
+}
+
+enum SafetyRestrictionDuration {
+  HOURS_24
+  DAYS_7
+  DAYS_30
+}
+
+enum SafetyRestrictionEventType {
+  PROPOSED
+  APPROVED_AND_ACTIVATED
+  REJECTED
+  REVERSED
+  EXPIRED
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -185,6 +212,12 @@ model User {
   safetyReportConversations       SafetyReportConversation[]
   safetyReportAdminMessages       SafetyReportMessage[]                @relation("SafetyReportMessageAdministrators")
   safetyReportParticipantMessages SafetyReportMessage[]                @relation("SafetyReportMessageParticipants")
+  safetyRestrictionsAffected      SafetyReportRestriction[]            @relation("SafetyRestrictionParticipant")
+  safetyRestrictionsProposed      SafetyReportRestriction[]            @relation("SafetyRestrictionProposer")
+  safetyRestrictionsApproved      SafetyReportRestriction[]            @relation("SafetyRestrictionApprover")
+  safetyRestrictionsRejected      SafetyReportRestriction[]            @relation("SafetyRestrictionRejector")
+  safetyRestrictionsReversed      SafetyReportRestriction[]            @relation("SafetyRestrictionReverser")
+  safetyRestrictionEvents         SafetyReportRestrictionEvent[]       @relation("SafetyRestrictionEventActor")
 
   @@index([pendingOfferTripId])
   @@index([activeTripId])
@@ -556,6 +589,7 @@ model SafetyReport {
   assignmentEvents        SafetyReportAssignmentEvent[]
   internalNotes           SafetyReportInternalNote[]
   conversations           SafetyReportConversation[]
+  restrictions            SafetyReportRestriction[]
 
   @@unique([tripId, reporterId])
   @@index([createdAt, id])
@@ -629,4 +663,53 @@ model SafetyReportMessage {
   createdAt       DateTime                      @default(now()) @db.Timestamptz(3)
 
   @@index([conversationId, createdAt, id])
+}
+
+model SafetyReportRestriction {
+  id                        String                           @id @default(uuid()) @db.Uuid
+  safetyReport              SafetyReport                     @relation(fields: [safetyReportId], references: [id], onDelete: Restrict)
+  safetyReportId            String                           @db.Uuid
+  participantRole           SafetyRestrictionParticipantRole
+  participant               User                             @relation("SafetyRestrictionParticipant", fields: [participantId], references: [id], onDelete: Restrict)
+  participantId             String
+  status                    SafetyRestrictionStatus          @default(PROPOSED)
+  duration                  SafetyRestrictionDuration
+  internalReason            String                           @db.VarChar(2000)
+  participantExplanation    String                           @db.VarChar(1000)
+  proposedByAdministrator   User                             @relation("SafetyRestrictionProposer", fields: [proposedByAdministratorId], references: [id], onDelete: Restrict)
+  proposedByAdministratorId String
+  proposedAt                DateTime                         @default(now()) @db.Timestamptz(3)
+  approvedByAdministrator   User?                            @relation("SafetyRestrictionApprover", fields: [approvedByAdministratorId], references: [id], onDelete: Restrict)
+  approvedByAdministratorId String?
+  approvedAt                DateTime?                        @db.Timestamptz(3)
+  startsAt                  DateTime?                        @db.Timestamptz(3)
+  expiresAt                 DateTime?                        @db.Timestamptz(3)
+  rejectedByAdministrator   User?                            @relation("SafetyRestrictionRejector", fields: [rejectedByAdministratorId], references: [id], onDelete: Restrict)
+  rejectedByAdministratorId String?
+  rejectedAt                DateTime?                        @db.Timestamptz(3)
+  rejectionReason           String?                          @db.VarChar(2000)
+  reversedByAdministrator   User?                            @relation("SafetyRestrictionReverser", fields: [reversedByAdministratorId], references: [id], onDelete: Restrict)
+  reversedByAdministratorId String?
+  reversedAt                DateTime?                        @db.Timestamptz(3)
+  reversalReason            String?                          @db.VarChar(2000)
+  version                   Int                              @default(1)
+  createdAt                 DateTime                         @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                         @updatedAt @db.Timestamptz(3)
+  events                    SafetyReportRestrictionEvent[]
+
+  @@index([participantId, status, expiresAt])
+  @@index([safetyReportId, createdAt, id])
+}
+
+model SafetyReportRestrictionEvent {
+  id                   String                     @id @default(uuid()) @db.Uuid
+  restriction          SafetyReportRestriction    @relation(fields: [restrictionId], references: [id], onDelete: Restrict)
+  restrictionId        String                     @db.Uuid
+  eventType            SafetyRestrictionEventType
+  actorAdministrator   User?                      @relation("SafetyRestrictionEventActor", fields: [actorAdministratorId], references: [id], onDelete: Restrict)
+  actorAdministratorId String?
+  reason               String?                    @db.VarChar(2000)
+  occurredAt           DateTime                   @default(now()) @db.Timestamptz(3)
+
+  @@index([restrictionId, occurredAt, id])
 }

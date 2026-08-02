@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authorizeExplorerApi } from "@/lib/current-user";
+import { authorizeExplorerApi, enforceAccountSafetyForActivity } from "@/lib/current-user";
 import { acceptProposal } from "@/lib/agreements";
 
 export async function POST(req: Request, { params }: { params: { id: string; proposalId: string } }) {
   const access = await authorizeExplorerApi(); if (!access.ok) return access.response;
+  const restricted = await enforceAccountSafetyForActivity(access.user.id); if (restricted) return restricted;
   let input: Record<string, unknown> = {};
   try {
     const text = await req.text();

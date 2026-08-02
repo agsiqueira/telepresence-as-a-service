@@ -4,6 +4,7 @@ import { AccountStatus, JourneyRequestStatus, OperatorPilotStatus, Prisma, Propo
 import { DISCOVERY_SELECT, JOURNEY_REQUEST_LIMITS, materializeExpiredJourneyRequests } from "@/lib/journey-requests";
 import { profileIsComplete } from "@/lib/marketplace";
 import { publicDisplayName } from "@/lib/profiles";
+import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "@/lib/safety-restriction-lock";
 
 type Database = PrismaClient;
 type Failure = { ok: false; status: 400 | 404 | 409; error: string };
@@ -17,6 +18,8 @@ async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient
     catch (error) { if (!serializationFailure(error) || attempt >= 2) throw error; }
   }
 }
+const safetyLocked = <T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) =>
+  db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 
 export type ProposalInput = { earliestStart: Date; latestStart: Date | null; durationMinutes: number; proposedPriceMinor: number; currency: string; validUntil: Date };
 type RequestTerms = { earliestStart: Date; latestStart: Date; expiresAt: Date; currency: string };
@@ -60,7 +63,11 @@ async function eligibleRequest(tx: Prisma.TransactionClient, teleporterId: strin
 }
 
 export async function submitInitialProposal(db: Database, teleporterId: string, requestId: string, body: Record<string, unknown>, now = new Date()) {
-  try { return await serializable(db, async tx => {
+  try { return await safetyLocked(db, async tx => {
+    const pairing = await tx.journeyRequest.findUnique({ where: { id: requestId }, select: { explorerId: true } });
+    if (!pairing) return fail(404, "Eligible Journey Request not found");
+    await acquireSafetyRestrictionParticipantLocks(tx, [pairing.explorerId, teleporterId]);
+    if (await hasEffectiveSafetyRestrictionInTransaction(tx, [pairing.explorerId, teleporterId], now)) return fail(409, "Account safety restriction prevents a new participant pairing");
     const eligible = await eligibleRequest(tx, teleporterId, requestId, now); if ("error" in eligible) return eligible.error;
     if (await tx.proposal.count({ where: { journeyRequestId: requestId, teleporterId } })) return fail(409, "A Proposal chain already exists for this Journey Request");
     const input = validateProposalInput(body, eligible.request, now); if (!input.ok) return input;
