@@ -1,0 +1,2 @@
+import{NextRequest,NextResponse}from"next/server";import{db}from"@/lib/db";import{authorizeExplorerApi}from"@/lib/current-user";import{abandonLiveMomentClaim}from"@/lib/live-moments";import{liveMomentError}from"@/lib/live-moment-api";
+export async function POST(_r:NextRequest,{params}:{params:{id:string}}){const a=await authorizeExplorerApi();if(!a.ok)return a.response;try{return NextResponse.json({claim:await abandonLiveMomentClaim(db,a.user.id,params.id)},{headers:{"Cache-Control":"no-store"}})}catch(e){return liveMomentError(e)}}

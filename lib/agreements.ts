@@ -5,6 +5,7 @@ import { AccountStatus, AgreementStatus, JourneyRequestStatus, OperatorPilotStat
 import { profileIsComplete } from "@/lib/marketplace";
 import { publicDisplayName } from "@/lib/profiles";
 import { acquireSafetyRestrictionParticipantLocks, hasEffectiveSafetyRestrictionInTransaction } from "@/lib/safety-restriction-lock";
+import { commitSupplyCapacityClaimInTransaction } from "@/lib/supply-foundation";
 
 type Database = PrismaClient;
 type Failure = { ok: false; status: 400 | 404 | 409; error: string };
@@ -73,7 +74,7 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
 
       const request = await tx.journeyRequest.findUnique({
         where: { id: requestId },
-        select: { id: true, explorerId: true, destinationId: true, publicPlaceName: true, coarseLocation: true, privateMeetingDetails: true, expiresAt: true, status: true, tripId: true, explorer: { select: { role: true, accountStatus: true, preferredLanguage: true, accessibilityPreferences: true } }, destination: { select: { name: true, city: true, custom: true } } },
+        select: { id: true, explorerId: true, destinationId: true, supplyListingId: true, publicPlaceName: true, coarseLocation: true, privateMeetingDetails: true, expiresAt: true, status: true, tripId: true, explorer: { select: { role: true, accountStatus: true, preferredLanguage: true, accessibilityPreferences: true } }, destination: { select: { name: true, city: true, custom: true } } },
       });
       if (!request || request.explorerId !== explorerId) return fail(404, "Journey Request not found");
       if (request.explorer.role === Role.ADMIN || request.explorer.accountStatus !== AccountStatus.ACTIVE) return fail(404, "Journey Request not found");
@@ -102,7 +103,7 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
       if (!Number.isFinite(reservationEndAt.getTime()) || reservationEndAt <= agreedStartAt) throw new Error("INVALID_RESERVATION_INTERVAL");
       const teleporter = proposal.teleporter;
       const destinations = teleporter.destinationServices.map(value => value.destinationId);
-      const supportsRequest = request.destinationId ? destinations.includes(request.destinationId) : Boolean(teleporter.operatorProfile?.supportsCustom);
+      const supportsRequest = request.supplyListingId ? true : request.destinationId ? destinations.includes(request.destinationId) : Boolean(teleporter.operatorProfile?.supportsCustom);
       if (teleporter.role === Role.ADMIN || teleporter.accountStatus !== AccountStatus.ACTIVE || teleporter.operatorProfile?.pilotStatus !== OperatorPilotStatus.APPROVED || teleporter.pendingOfferTripId || !supportsRequest || !profileIsComplete(teleporter.operatorProfile, destinations.length, teleporter.operatorProfile?.supportsCustom ?? false, publicDisplayName(teleporter.name))) return fail(409, "Teleporter is no longer eligible for a new confirmed Journey");
       if (teleporter.id === explorerId) return fail(409, "A Teleporter cannot fulfill their own Journey Request");
 
@@ -136,6 +137,8 @@ export async function acceptProposal(db: Database, explorerId: string, requestId
       } });
       const converted = await tx.journeyRequest.updateMany({ where: { id: requestId, explorerId, status: JourneyRequestStatus.OPEN, expiresAt: { gt: now }, tripId: null }, data: { status: JourneyRequestStatus.CONVERTED, convertedAt: now, tripId: trip.id, updatedAt: now } });
       if (converted.count !== 1) throw new Error("REQUEST_CONVERSION_RACE");
+      const supplyClaim = await tx.supplyCapacityClaim.findUnique({ where: { proposalId: proposal.id }, select: { id: true, status: true } });
+      if (supplyClaim?.status === "HELD") await commitSupplyCapacityClaimInTransaction(tx, supplyClaim.id, { journeyRequestId: request.id, proposalId: proposal.id, agreementId: agreement.id, tripId: trip.id });
       return { ok: true as const, value: agreement, created: true };
     });
   } catch (error) {

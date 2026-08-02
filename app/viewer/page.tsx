@@ -7,6 +7,7 @@ import JourneyReviewPanel from "@/components/JourneyReviewPanel";
 import SafetyReportDialog from "@/components/SafetyReportDialog";
 import ProfileSettings from "@/components/ProfileSettings";
 import AccountSafetyRestrictionNotice from "@/components/AccountSafetyRestrictionNotice";
+import LiveMomentDiscovery from "@/components/LiveMomentDiscovery";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
@@ -261,6 +262,7 @@ export default function ViewerPage() {
         <AccountSafetyRestrictionNotice />
         <h1 className="text-3xl font-bold text-spartan-green">Choose a destination</h1>
         <p className="mb-6 mt-2 text-gray-600">Browse active pilot destinations for an immediate virtual visit.</p>
+        <LiveMomentDiscovery />
         {loadErrors.length > 0 && <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert"><p className="font-semibold">Some visit information could not be loaded.</p><ul className="mt-1 list-disc pl-5">{loadErrors.map(message => <li key={message}>{message}</li>)}</ul></div>}
         <div className="grid gap-3 sm:grid-cols-2">
           {destinations.map((destination) => (

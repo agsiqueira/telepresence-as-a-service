@@ -75,14 +75,15 @@ export async function createLiveMomentFoundation(db: PrismaClient, teleporterId:
   try {
     return await db.$transaction(async tx => {
       await requireMutationActor(tx, teleporterId, true);
-      return tx.supplyListing.create({
+      const listing = await tx.supplyListing.create({
         data: {
           teleporterId, type: SupplyType.LIVE_MOMENT, publicPlaceName: bounded(body.publicPlaceName, 120), coarseLocation: bounded(body.coarseLocation, 120),
           durationMinutes: integer(body.durationMinutes, 1, 1440), priceMinor: integer(body.priceMinor, 1, 100_000_000), currency: currency(body.currency), capacity: integer(body.capacity, 1, 1000),
-          liveMoment: { create: { availabilityStart, availabilityEnd, expiresAt } },
         },
-        select: { id: true, type: true, status: true, version: true, liveMoment: { select: { id: true, availabilityStart: true, availabilityEnd: true, expiresAt: true } } },
+        select: { id: true },
       });
+      await tx.liveMoment.create({ data: { listingId: listing.id, availabilityStart, availabilityEnd, expiresAt } });
+      return tx.supplyListing.findUniqueOrThrow({ where: { id: listing.id }, select: { id: true, type: true, status: true, version: true, liveMoment: { select: { id: true, availabilityStart: true, availabilityEnd: true, expiresAt: true } } } });
     });
   } catch (error) { mapDatabaseError(error); }
 }

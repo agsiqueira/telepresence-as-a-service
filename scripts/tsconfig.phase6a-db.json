@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.phase3-db.json","compilerOptions":{"outDir":"../.phase6a-test-build"},"include":["phase6a-db-integration.ts"]}

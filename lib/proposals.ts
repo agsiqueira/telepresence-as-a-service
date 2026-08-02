@@ -99,6 +99,7 @@ async function terminalTeleporterAction(db: Database, teleporterId: string, prop
     if (proposal.status !== ProposalStatus.ACTIVE) return fail(409, "Proposal can no longer be withdrawn");
     const changed = await tx.proposal.updateMany({ where: { id: proposalId, teleporterId, status: ProposalStatus.ACTIVE, validUntil: { gt: now } }, data: { status: ProposalStatus.WITHDRAWN, terminalAt: now } });
     if (changed.count !== 1) return fail(409, "Proposal changed concurrently");
+    await tx.supplyCapacityClaim.updateMany({ where: { proposalId, status: "HELD" }, data: { status: "RELEASED", releasedAt: now } });
     return { ok: true as const, value: safeTerms(await tx.proposal.findUniqueOrThrow({ where: { id: proposalId }, select: TERMS_SELECT })) };
   });
 }
@@ -129,6 +130,7 @@ export async function declineProposal(db: Database, explorerId: string, requestI
     if (proposal.status !== ProposalStatus.ACTIVE) return fail(409, "Proposal can no longer be declined");
     const changed = await tx.proposal.updateMany({ where: { id: proposalId, journeyRequestId: requestId, status: ProposalStatus.ACTIVE, validUntil: { gt: now } }, data: { status: ProposalStatus.DECLINED, terminalAt: now } });
     if (changed.count !== 1) return fail(409, "Proposal changed concurrently");
+    await tx.supplyCapacityClaim.updateMany({ where: { proposalId, status: "HELD" }, data: { status: "RELEASED", releasedAt: now } });
     return { ok: true as const, value: safeTerms(await tx.proposal.findUniqueOrThrow({ where: { id: proposalId }, select: TERMS_SELECT })) };
   }); } catch (error) { if (serializationFailure(error)) return fail(409, "Proposal changed concurrently"); throw error; }
 }

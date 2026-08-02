@@ -12,7 +12,8 @@ export type LifecycleResult<T> = { ok: true; value: T } | LifecycleFailure;
 
 const conflict = (error: string): LifecycleFailure => ({ ok: false, status: 409, error });
 const isSerializationFailure = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  (error.code === "P2034" || (error.code === "P2010" && error.meta?.code === "40001"));
 
 async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>, timeout?: number) {
   for (let attempt = 0; ; attempt += 1) {
@@ -96,8 +97,17 @@ export async function cancelTrip(
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
     return await serializable(db, async tx => {
+      const supplyLock = await tx.supplyCapacityClaim.findUnique({ where: { tripId }, select: { id: true, listingId: true, teleporterId: true } });
+      if (supplyLock) {
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SupplyListing" WHERE "id"=${supplyLock.listingId}::uuid FOR UPDATE`);
+        await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${'phase6-claim-teleporter:' + supplyLock.teleporterId},0))`);
+        await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SupplyCapacityClaim" WHERE "id"=${supplyLock.id}::uuid FOR UPDATE`);
+      }
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
-      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true, status: true }, take: 1 } } });
+      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: {
+        scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true, status: true }, take: 1 },
+        supplyCapacityClaim: { select: { id: true, status: true, listingId: true, liveMomentId: true, occurrenceId: true, startAt: true, endAt: true, listing: { select: { status: true } }, liveMoment: { select: { expiresAt: true } } } },
+      } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip };
       const actsAsViewer = trip.viewerId === actorId;
@@ -134,6 +144,29 @@ export async function cancelTrip(
           where: { id: currentReservation.id, tripId, status: "CONFIRMED", releasedAt: null },
           data: { status: "RELEASED", releasedAt: now },
         });
+      }
+
+      const supplyClaim = trip.supplyCapacityClaim;
+      if (
+        trip.status === TripStatus.ACCEPTED &&
+        supplyClaim?.status === "COMMITTED" &&
+        supplyClaim.liveMomentId &&
+        !supplyClaim.occurrenceId &&
+        !trip.startedAt &&
+        now < supplyClaim.startAt &&
+        supplyClaim.listing.status === "PUBLISHED" &&
+        supplyClaim.liveMoment?.expiresAt &&
+        supplyClaim.liveMoment.expiresAt > now
+      ) {
+        await tx.supplyCapacityRestoration.create({ data: {
+          claimId: supplyClaim.id,
+          tripId: trip.id,
+          listingId: supplyClaim.listingId,
+          liveMomentId: supplyClaim.liveMomentId,
+          occurrenceId: null,
+          startAt: supplyClaim.startAt,
+          endAt: supplyClaim.endAt,
+        } });
       }
 
       if (trip.status === TripStatus.OFFERED && trip.offeredOperatorId) {

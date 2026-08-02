@@ -389,16 +389,17 @@ model Trip {
   reviewDeadlineAt      DateTime?    @db.Timestamptz(3)
   retryOfTripId         String?      @unique
 
-  feedback              Feedback[]
-  offers                TripOffer[]
-  journeyRequest        JourneyRequest?
-  agreement             Agreement?
-  scheduledReservations ScheduledJourneyReservation[]
-  rescheduleProposals   ScheduledJourneyRescheduleProposal[]
-  reviews               JourneyReview[]
-  simulatedTip          SimulatedTip?
-  supplyCapacityClaim   SupplyCapacityClaim?
-  safetyReports         SafetyReport[]
+  feedback                  Feedback[]
+  offers                    TripOffer[]
+  journeyRequest            JourneyRequest?
+  agreement                 Agreement?
+  scheduledReservations     ScheduledJourneyReservation[]
+  rescheduleProposals       ScheduledJourneyRescheduleProposal[]
+  reviews                   JourneyReview[]
+  simulatedTip              SimulatedTip?
+  supplyCapacityClaim       SupplyCapacityClaim?
+  supplyCapacityRestoration SupplyCapacityRestoration?
+  safetyReports             SafetyReport[]
 
   @@unique([id, viewerId, operatorId])
   @@index([status])
@@ -627,27 +628,28 @@ model SimulatedTip {
 }
 
 model SupplyListing {
-  id                    String                @id @default(uuid()) @db.Uuid
-  teleporter            User                  @relation(fields: [teleporterId], references: [id], onDelete: Restrict)
+  id                    String                      @id @default(uuid()) @db.Uuid
+  teleporter            User                        @relation(fields: [teleporterId], references: [id], onDelete: Restrict)
   teleporterId          String
   type                  SupplyType
-  status                SupplyStatus          @default(DRAFT)
-  publicPlaceName       String                @db.VarChar(120)
-  coarseLocation        String                @db.VarChar(120)
+  status                SupplyStatus                @default(DRAFT)
+  publicPlaceName       String                      @db.VarChar(120)
+  coarseLocation        String                      @db.VarChar(120)
   durationMinutes       Int
   priceMinor            Int
-  currency              String                @db.Char(3)
+  currency              String                      @db.Char(3)
   capacity              Int
-  version               Int                   @default(1)
-  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
-  publishedAt           DateTime?             @db.Timestamptz(3)
-  pausedAt              DateTime?             @db.Timestamptz(3)
-  archivedAt            DateTime?             @db.Timestamptz(3)
+  version               Int                         @default(1)
+  createdAt             DateTime                    @default(now()) @db.Timestamptz(3)
+  publishedAt           DateTime?                   @db.Timestamptz(3)
+  pausedAt              DateTime?                   @db.Timestamptz(3)
+  archivedAt            DateTime?                   @db.Timestamptz(3)
   liveMoment            LiveMoment?
   guidedExperience      GuidedExperience?
   claims                SupplyCapacityClaim[]
-  sourceJourneyRequests JourneyRequest[]      @relation("SupplyJourneyRequests")
-  sourceProposals       Proposal[]            @relation("SupplyProposals")
+  capacityRestorations  SupplyCapacityRestoration[]
+  sourceJourneyRequests JourneyRequest[]            @relation("SupplyJourneyRequests")
+  sourceProposals       Proposal[]                  @relation("SupplyProposals")
 
   @@unique([id, teleporterId])
   @@index([teleporterId, status, createdAt])
@@ -655,13 +657,14 @@ model SupplyListing {
 }
 
 model LiveMoment {
-  id                String                @id @default(uuid()) @db.Uuid
-  listing           SupplyListing         @relation(fields: [listingId], references: [id], onDelete: Restrict)
-  listingId         String                @unique @db.Uuid
-  availabilityStart DateTime              @db.Timestamptz(3)
-  availabilityEnd   DateTime              @db.Timestamptz(3)
-  expiresAt         DateTime              @db.Timestamptz(3)
-  claims            SupplyCapacityClaim[]
+  id                   String                      @id @default(uuid()) @db.Uuid
+  listing              SupplyListing               @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  listingId            String                      @unique @db.Uuid
+  availabilityStart    DateTime                    @db.Timestamptz(3)
+  availabilityEnd      DateTime                    @db.Timestamptz(3)
+  expiresAt            DateTime                    @db.Timestamptz(3)
+  claims               SupplyCapacityClaim[]
+  capacityRestorations SupplyCapacityRestoration[]
 
   @@index([availabilityStart, availabilityEnd])
   @@index([expiresAt])
@@ -675,20 +678,21 @@ model GuidedExperience {
 }
 
 model GuidedExperienceOccurrence {
-  id                    String                @id @default(uuid()) @db.Uuid
-  guidedExperience      GuidedExperience      @relation(fields: [guidedExperienceId], references: [id], onDelete: Restrict)
-  guidedExperienceId    String                @db.Uuid
-  status                SupplyStatus          @default(DRAFT)
-  availabilityStart     DateTime              @db.Timestamptz(3)
-  availabilityEnd       DateTime              @db.Timestamptz(3)
+  id                    String                      @id @default(uuid()) @db.Uuid
+  guidedExperience      GuidedExperience            @relation(fields: [guidedExperienceId], references: [id], onDelete: Restrict)
+  guidedExperienceId    String                      @db.Uuid
+  status                SupplyStatus                @default(DRAFT)
+  availabilityStart     DateTime                    @db.Timestamptz(3)
+  availabilityEnd       DateTime                    @db.Timestamptz(3)
   capacity              Int
-  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
-  publishedAt           DateTime?             @db.Timestamptz(3)
-  pausedAt              DateTime?             @db.Timestamptz(3)
-  archivedAt            DateTime?             @db.Timestamptz(3)
+  createdAt             DateTime                    @default(now()) @db.Timestamptz(3)
+  publishedAt           DateTime?                   @db.Timestamptz(3)
+  pausedAt              DateTime?                   @db.Timestamptz(3)
+  archivedAt            DateTime?                   @db.Timestamptz(3)
   claims                SupplyCapacityClaim[]
-  sourceJourneyRequests JourneyRequest[]      @relation("SupplyJourneyRequestOccurrences")
-  sourceProposals       Proposal[]            @relation("SupplyProposalOccurrences")
+  capacityRestorations  SupplyCapacityRestoration[]
+  sourceJourneyRequests JourneyRequest[]            @relation("SupplyJourneyRequestOccurrences")
+  sourceProposals       Proposal[]                  @relation("SupplyProposalOccurrences")
 
   @@index([guidedExperienceId, status, availabilityStart])
   @@index([status, availabilityStart, availabilityEnd])
@@ -720,12 +724,33 @@ model SupplyCapacityClaim {
   agreementId      String?                     @unique
   trip             Trip?                       @relation(fields: [tripId], references: [id], onDelete: Restrict)
   tripId           String?                     @unique
+  restoration      SupplyCapacityRestoration?
 
   @@index([explorerId, status, expiresAt])
   @@index([teleporterId, status, startAt, endAt])
   @@index([listingId, status, expiresAt])
   @@index([liveMomentId, status, expiresAt])
   @@index([occurrenceId, status, expiresAt])
+}
+
+model SupplyCapacityRestoration {
+  id           String                      @id @default(uuid()) @db.Uuid
+  claim        SupplyCapacityClaim         @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  claimId      String                      @unique @db.Uuid
+  trip         Trip                        @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId       String                      @unique
+  listing      SupplyListing               @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  listingId    String                      @db.Uuid
+  liveMoment   LiveMoment?                 @relation(fields: [liveMomentId], references: [id], onDelete: Restrict)
+  liveMomentId String?                     @db.Uuid
+  occurrence   GuidedExperienceOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: Restrict)
+  occurrenceId String?                     @db.Uuid
+  startAt      DateTime                    @db.Timestamptz(3)
+  endAt        DateTime                    @db.Timestamptz(3)
+  createdAt    DateTime                    @default(now()) @db.Timestamptz(3)
+
+  @@index([listingId, startAt, endAt])
+  @@index([liveMomentId, startAt, endAt])
 }
 
 model SafetyReport {
