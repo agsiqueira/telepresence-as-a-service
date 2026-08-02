@@ -37,12 +37,6 @@ const withCurrentSchedule = <T extends { agreedStartAt: Date | null; agreedDurat
 };
 const currentReservation = { where: { status: "CONFIRMED" as const }, orderBy: { createdAt: "desc" as const }, select: { startAt: true, endAt: true }, take: 1 };
 
-async function serializable<T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) {
-  for (let attempt = 0; ; attempt += 1) {
-    try { return await db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }); }
-    catch (error) { if (!retryable(error) || attempt >= 2) throw error; }
-  }
-}
 const safetyLocked = <T>(db: Database, work: (tx: Prisma.TransactionClient) => Promise<T>) =>
   db.$transaction(work, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 

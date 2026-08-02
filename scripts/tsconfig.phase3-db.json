@@ -21,6 +21,7 @@
     "phase5a4-db-integration.ts",
     "phase5b-reschedule-db-integration.ts",
     "phase5d1-review-db-integration.ts",
+    "phase5d1-hardening-db-integration.ts",
     "safety-reporting-phase1-db-integration.ts",
     "safety-reporting-phase3-db-integration.ts",
     "safety-reporting-phase4a-db-integration.ts",
