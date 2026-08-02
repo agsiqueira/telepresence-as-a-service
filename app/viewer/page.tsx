@@ -101,7 +101,7 @@ export default function ViewerPage() {
 
   useEffect(() => {
     if (phase !== "browse") return;
-    void fetchJson<{ history: HistoryTrip[] }>("/api/trips/history?limit=10")
+    void fetchJson<{ history: HistoryTrip[] }>("/api/trips/history?limit=50")
       .then(data => setHistory(data.history ?? []))
       .catch(() => setLoadErrors(current => [...new Set([...current, "Unable to load visit history. Please try again."])]));
   }, [phase, historyRefresh]);
@@ -297,7 +297,7 @@ export default function ViewerPage() {
           </div>
         )}
         <section className="mt-10" aria-labelledby="viewer-history-heading">
-          <h2 id="viewer-history-heading" className="text-xl font-semibold">Recent visits</h2>
+          <h2 id="viewer-history-heading" className="text-xl font-semibold">Visit history</h2>
           {history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No visits yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map(item => <li key={item.id} className="p-3"><p className="font-medium">{item.destination}</p><p className="text-sm text-gray-600">{item.status.replaceAll("_", " ").toLowerCase()} · {item.requestedDuration ?? "—"} min</p>{item.status==="ENDED"&&<section className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3" aria-labelledby={`private-feedback-${item.id}`}><h3 id={`private-feedback-${item.id}`} className="font-semibold text-blue-950">Private visit feedback</h3><p className="mt-1 text-sm text-blue-950">Help evaluate the visit experience. Your answers are internal research feedback and are not shared with the Teleporter or used in Journey reviews.</p><button type="button" aria-expanded={feedbackTripId===item.id} aria-controls={`private-feedback-form-${item.id}`} onClick={()=>setFeedbackTripId(current=>current===item.id?null:item.id)} className="mt-3 min-h-11 rounded-lg border border-blue-800 bg-white px-4 font-semibold text-blue-950 focus-visible:ring-2">{feedbackTripId===item.id?"Close private feedback":"Complete private feedback"}</button>{feedbackTripId===item.id&&<div id={`private-feedback-form-${item.id}`}><FeedbackForm tripId={item.id} onDone={()=>{setFeedbackTripId(null);setHistoryRefresh(value=>value+1)}}/></div>}</section>}{["ACCEPTED","IN_PROGRESS","ENDED","FEEDBACK_COMPLETED","CANCELLED"].includes(item.status)&&<SafetyReportDialog tripId={item.id}/>} {(item.status==="ENDED"||item.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.id}/>}</li>)}</ul>}
         </section>
         <ProfileSettings role="viewer" />
