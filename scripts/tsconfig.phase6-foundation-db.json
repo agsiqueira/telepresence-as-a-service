@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.phase3-db.json",
+  "compilerOptions": { "outDir": "../.phase6-foundation-test-build" },
+  "include": ["phase6-foundation-db-integration.ts"]
+}

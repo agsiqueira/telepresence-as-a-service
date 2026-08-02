@@ -76,6 +76,8 @@
     "test:unfar:phase5d2": "node scripts/validate-unfar-phase5d2-ui.mjs",
     "test:phase5f": "node scripts/validate-phase5f-simulated-tips.mjs",
     "test:phase5f:db": "node scripts/run-phase5f-db-tests.mjs",
+    "test:phase6:foundation": "node scripts/validate-phase6-foundation.mjs",
+    "test:phase6:foundation:db": "node scripts/run-phase6-foundation-db-tests.mjs",
     "test:feedback-reload": "node scripts/validate-feedback-reload-remediation.mjs",
     "test:safety-reporting:phase1": "node scripts/validate-safety-reporting-phase1.mjs",
     "test:safety-reporting:phase1:db": "node scripts/run-safety-reporting-phase1-db-tests.mjs",

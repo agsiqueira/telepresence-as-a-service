@@ -165,6 +165,25 @@ enum SafetyRestrictionEventType {
   EXPIRED
 }
 
+enum SupplyType {
+  LIVE_MOMENT
+  GUIDED_EXPERIENCE
+}
+
+enum SupplyStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum SupplyCapacityClaimStatus {
+  HELD
+  COMMITTED
+  RELEASED
+  EXPIRED
+}
+
 model User {
   id                       String        @id @default(cuid())
   clerkId                  String        @unique
@@ -203,6 +222,8 @@ model User {
   journeyReviewsReceived          JourneyReview[]                      @relation("JourneyReviewsReceived")
   simulatedTipsGiven              SimulatedTip[]                       @relation("SimulatedTipsGiven")
   simulatedTipsReceived           SimulatedTip[]                       @relation("SimulatedTipsReceived")
+  supplyListings                  SupplyListing[]
+  supplyCapacityClaims            SupplyCapacityClaim[]                @relation("SupplyClaimsByExplorer")
   safetyReportsAuthored           SafetyReport[]                       @relation("SafetyReportsAuthored")
   safetyReportsReceived           SafetyReport[]                       @relation("SafetyReportsReceived")
   safetyReportTriageEvents        SafetyReportTriageEvent[]            @relation("SafetyReportTriageAdministrators")
@@ -376,6 +397,7 @@ model Trip {
   rescheduleProposals   ScheduledJourneyRescheduleProposal[]
   reviews               JourneyReview[]
   simulatedTip          SimulatedTip?
+  supplyCapacityClaim   SupplyCapacityClaim?
   safetyReports         SafetyReport[]
 
   @@unique([id, viewerId, operatorId])
@@ -385,62 +407,78 @@ model Trip {
 }
 
 model JourneyRequest {
-  id                    String               @id @default(cuid())
-  explorer              User                 @relation("ExplorerJourneyRequests", fields: [explorerId], references: [id], onDelete: Restrict)
+  id                    String                      @id @default(cuid())
+  explorer              User                        @relation("ExplorerJourneyRequests", fields: [explorerId], references: [id], onDelete: Restrict)
   explorerId            String
-  destination           Destination?         @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  destination           Destination?                @relation(fields: [destinationId], references: [id], onDelete: SetNull)
   destinationId         String?
-  trip                  Trip?                @relation(fields: [tripId], references: [id], onDelete: Restrict)
-  tripId                String?              @unique
-  publicPlaceName       String               @db.VarChar(120)
-  coarseLocation        String               @db.VarChar(120)
-  privateMeetingDetails String?              @db.VarChar(500)
+  trip                  Trip?                       @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId                String?                     @unique
+  publicPlaceName       String                      @db.VarChar(120)
+  coarseLocation        String                      @db.VarChar(120)
+  privateMeetingDetails String?                     @db.VarChar(500)
   earliestStart         DateTime
   latestStart           DateTime
   durationMinutes       Int
   proposedPriceMinor    Int
-  currency              String               @db.Char(3)
+  currency              String                      @db.Char(3)
   expiresAt             DateTime
-  status                JourneyRequestStatus @default(OPEN)
+  status                JourneyRequestStatus        @default(OPEN)
   withdrawnAt           DateTime?
   convertedAt           DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
   proposals             Proposal[]
   agreement             Agreement?
+  supplyCapacityClaim   SupplyCapacityClaim?
+  supplyListing         SupplyListing?              @relation("SupplyJourneyRequests", fields: [supplyListingId], references: [id], onDelete: Restrict)
+  supplyListingId       String?                     @db.Uuid
+  supplyListingVersion  Int?
+  supplyOccurrence      GuidedExperienceOccurrence? @relation("SupplyJourneyRequestOccurrences", fields: [supplyOccurrenceId], references: [id], onDelete: Restrict)
+  supplyOccurrenceId    String?                     @db.Uuid
 
   @@unique([id, explorerId])
   @@index([explorerId, createdAt])
   @@index([status, expiresAt, earliestStart])
   @@index([coarseLocation, status, expiresAt])
   @@index([destinationId])
+  @@index([supplyListingId, supplyListingVersion])
+  @@index([supplyOccurrenceId])
 }
 
 model Proposal {
-  id                 String         @id @default(cuid())
-  journeyRequest     JourneyRequest @relation(fields: [journeyRequestId], references: [id], onDelete: Restrict)
-  journeyRequestId   String
-  teleporter         User           @relation("TeleporterProposals", fields: [teleporterId], references: [id], onDelete: Restrict)
-  teleporterId       String
-  version            Int
-  revisesProposal    Proposal?      @relation("ProposalRevision", fields: [revisesProposalId], references: [id], onDelete: Restrict)
-  revisesProposalId  String?        @unique
-  revision           Proposal?      @relation("ProposalRevision")
-  earliestStart      DateTime
-  latestStart        DateTime?
-  durationMinutes    Int
-  proposedPriceMinor Int
-  currency           String         @db.Char(3)
-  validUntil         DateTime
-  status             ProposalStatus @default(ACTIVE)
-  createdAt          DateTime       @default(now())
-  terminalAt         DateTime?
-  agreement          Agreement?
+  id                   String                      @id @default(cuid())
+  journeyRequest       JourneyRequest              @relation(fields: [journeyRequestId], references: [id], onDelete: Restrict)
+  journeyRequestId     String
+  teleporter           User                        @relation("TeleporterProposals", fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporterId         String
+  version              Int
+  revisesProposal      Proposal?                   @relation("ProposalRevision", fields: [revisesProposalId], references: [id], onDelete: Restrict)
+  revisesProposalId    String?                     @unique
+  revision             Proposal?                   @relation("ProposalRevision")
+  earliestStart        DateTime
+  latestStart          DateTime?
+  durationMinutes      Int
+  proposedPriceMinor   Int
+  currency             String                      @db.Char(3)
+  validUntil           DateTime
+  status               ProposalStatus              @default(ACTIVE)
+  createdAt            DateTime                    @default(now())
+  terminalAt           DateTime?
+  agreement            Agreement?
+  supplyCapacityClaim  SupplyCapacityClaim?
+  supplyListing        SupplyListing?              @relation("SupplyProposals", fields: [supplyListingId], references: [id], onDelete: Restrict)
+  supplyListingId      String?                     @db.Uuid
+  supplyListingVersion Int?
+  supplyOccurrence     GuidedExperienceOccurrence? @relation("SupplyProposalOccurrences", fields: [supplyOccurrenceId], references: [id], onDelete: Restrict)
+  supplyOccurrenceId   String?                     @db.Uuid
 
   @@unique([id, journeyRequestId, teleporterId])
   @@unique([journeyRequestId, teleporterId, version])
   @@index([journeyRequestId, status, validUntil])
   @@index([teleporterId, journeyRequestId, createdAt])
+  @@index([supplyListingId, supplyListingVersion])
+  @@index([supplyOccurrenceId])
 }
 
 model Agreement {
@@ -469,6 +507,7 @@ model Agreement {
   confirmedAt             DateTime                             @default(now())
   scheduledReservations   ScheduledJourneyReservation[]
   rescheduleProposals     ScheduledJourneyRescheduleProposal[]
+  supplyCapacityClaim     SupplyCapacityClaim?
 
   @@unique([journeyRequestId, explorerId])
   @@unique([proposalId, journeyRequestId, teleporterId])
@@ -585,6 +624,108 @@ model SimulatedTip {
   @@unique([tripId, explorerId, teleporterId])
   @@index([explorerId, submittedAt])
   @@index([teleporterId, submittedAt])
+}
+
+model SupplyListing {
+  id                    String                @id @default(uuid()) @db.Uuid
+  teleporter            User                  @relation(fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporterId          String
+  type                  SupplyType
+  status                SupplyStatus          @default(DRAFT)
+  publicPlaceName       String                @db.VarChar(120)
+  coarseLocation        String                @db.VarChar(120)
+  durationMinutes       Int
+  priceMinor            Int
+  currency              String                @db.Char(3)
+  capacity              Int
+  version               Int                   @default(1)
+  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
+  publishedAt           DateTime?             @db.Timestamptz(3)
+  pausedAt              DateTime?             @db.Timestamptz(3)
+  archivedAt            DateTime?             @db.Timestamptz(3)
+  liveMoment            LiveMoment?
+  guidedExperience      GuidedExperience?
+  claims                SupplyCapacityClaim[]
+  sourceJourneyRequests JourneyRequest[]      @relation("SupplyJourneyRequests")
+  sourceProposals       Proposal[]            @relation("SupplyProposals")
+
+  @@unique([id, teleporterId])
+  @@index([teleporterId, status, createdAt])
+  @@index([type, status, publishedAt])
+}
+
+model LiveMoment {
+  id                String                @id @default(uuid()) @db.Uuid
+  listing           SupplyListing         @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  listingId         String                @unique @db.Uuid
+  availabilityStart DateTime              @db.Timestamptz(3)
+  availabilityEnd   DateTime              @db.Timestamptz(3)
+  expiresAt         DateTime              @db.Timestamptz(3)
+  claims            SupplyCapacityClaim[]
+
+  @@index([availabilityStart, availabilityEnd])
+  @@index([expiresAt])
+}
+
+model GuidedExperience {
+  id          String                       @id @default(uuid()) @db.Uuid
+  listing     SupplyListing                @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  listingId   String                       @unique @db.Uuid
+  occurrences GuidedExperienceOccurrence[]
+}
+
+model GuidedExperienceOccurrence {
+  id                    String                @id @default(uuid()) @db.Uuid
+  guidedExperience      GuidedExperience      @relation(fields: [guidedExperienceId], references: [id], onDelete: Restrict)
+  guidedExperienceId    String                @db.Uuid
+  status                SupplyStatus          @default(DRAFT)
+  availabilityStart     DateTime              @db.Timestamptz(3)
+  availabilityEnd       DateTime              @db.Timestamptz(3)
+  capacity              Int
+  createdAt             DateTime              @default(now()) @db.Timestamptz(3)
+  publishedAt           DateTime?             @db.Timestamptz(3)
+  pausedAt              DateTime?             @db.Timestamptz(3)
+  archivedAt            DateTime?             @db.Timestamptz(3)
+  claims                SupplyCapacityClaim[]
+  sourceJourneyRequests JourneyRequest[]      @relation("SupplyJourneyRequestOccurrences")
+  sourceProposals       Proposal[]            @relation("SupplyProposalOccurrences")
+
+  @@index([guidedExperienceId, status, availabilityStart])
+  @@index([status, availabilityStart, availabilityEnd])
+}
+
+model SupplyCapacityClaim {
+  id               String                      @id @default(uuid()) @db.Uuid
+  listing          SupplyListing               @relation(fields: [listingId, teleporterId], references: [id, teleporterId], onDelete: Restrict)
+  listingId        String                      @db.Uuid
+  liveMoment       LiveMoment?                 @relation(fields: [liveMomentId], references: [id], onDelete: Restrict)
+  liveMomentId     String?                     @db.Uuid
+  occurrence       GuidedExperienceOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: Restrict)
+  occurrenceId     String?                     @db.Uuid
+  explorer         User                        @relation("SupplyClaimsByExplorer", fields: [explorerId], references: [id], onDelete: Restrict)
+  explorerId       String
+  teleporterId     String
+  startAt          DateTime                    @db.Timestamptz(3)
+  endAt            DateTime                    @db.Timestamptz(3)
+  status           SupplyCapacityClaimStatus   @default(HELD)
+  createdAt        DateTime                    @default(now()) @db.Timestamptz(3)
+  expiresAt        DateTime                    @db.Timestamptz(3)
+  releasedAt       DateTime?                   @db.Timestamptz(3)
+  committedAt      DateTime?                   @db.Timestamptz(3)
+  journeyRequest   JourneyRequest?             @relation(fields: [journeyRequestId], references: [id], onDelete: Restrict)
+  journeyRequestId String?                     @unique
+  proposal         Proposal?                   @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  proposalId       String?                     @unique
+  agreement        Agreement?                  @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  agreementId      String?                     @unique
+  trip             Trip?                       @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  tripId           String?                     @unique
+
+  @@index([explorerId, status, expiresAt])
+  @@index([teleporterId, status, startAt, endAt])
+  @@index([listingId, status, expiresAt])
+  @@index([liveMomentId, status, expiresAt])
+  @@index([occurrenceId, status, expiresAt])
 }
 
 model SafetyReport {
