@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.phase3-db.json",
+  "compilerOptions": { "outDir": "../.phase5f-test-build" },
+  "include": [
+    "phase5f-db-integration.ts",
+    "../lib/simulated-tips.ts",
+    "../lib/profiles.ts",
+    "../lib/marketplace.ts",
+    "../lib/marketplace-vocabulary.ts",
+    "../lib/safety-restriction-lock.ts"
+  ]
+}

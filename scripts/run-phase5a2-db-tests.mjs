@@ -9,13 +9,13 @@ if (phase3 === process.env.DATABASE_URL) throw new Error("Disposable test databa
 const env = { ...process.env, DATABASE_URL: phase3 };
 const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "scripts/tsconfig.phase3-db.json"], { stdio: "inherit", env });
 if (compile.status !== 0) process.exit(compile.status ?? 1);
-for (const module of ["agreements", "journey-requests", "marketplace", "marketplace-vocabulary", "profiles"]) {
+for (const module of ["agreements", "journey-requests", "marketplace", "marketplace-vocabulary", "profiles", "safety-restriction-lock"]) {
   const path = `.phase3-test-build/lib/${module}.js`;
   writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', ""));
 }
 const aliasRoot = ".phase3-test-build/node_modules/@/lib";
 mkdirSync(aliasRoot, { recursive: true });
-for (const module of ["agreements", "journey-requests", "marketplace", "marketplace-vocabulary", "profiles"]) cpSync(`.phase3-test-build/lib/${module}.js`, `${aliasRoot}/${module}.js`);
+for (const module of ["agreements", "journey-requests", "marketplace", "marketplace-vocabulary", "profiles", "safety-restriction-lock"]) cpSync(`.phase3-test-build/lib/${module}.js`, `${aliasRoot}/${module}.js`);
 const test = spawnSync(process.execPath, [".phase3-test-build/scripts/phase5a2-db-integration.js"], { stdio: "inherit", env });
 rmSync(".phase3-test-build", { recursive: true, force: true });
 process.exit(test.status ?? 1);

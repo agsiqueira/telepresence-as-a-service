@@ -4,8 +4,8 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 
 const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "scripts/tsconfig.phase3-db.json"], { stdio: "inherit" });
 if (compile.status !== 0) process.exit(compile.status ?? 1);
-for (const module of ["marketplace", "marketplace-vocabulary", "profiles", "admin"]) { const path = `.phase3-test-build/lib/${module}.js`; writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', "")); }
-const alias = ".phase3-test-build/node_modules/@/lib"; mkdirSync(alias, { recursive: true }); for (const module of ["marketplace", "marketplace-vocabulary", "profiles"]) cpSync(`.phase3-test-build/lib/${module}.js`, `${alias}/${module}.js`);
+for (const module of ["marketplace", "marketplace-vocabulary", "profiles", "admin", "safety-restriction-lock"]) { const path = `.phase3-test-build/lib/${module}.js`; writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', "")); }
+const alias = ".phase3-test-build/node_modules/@/lib"; mkdirSync(alias, { recursive: true }); for (const module of ["marketplace", "marketplace-vocabulary", "profiles", "safety-restriction-lock"]) cpSync(`.phase3-test-build/lib/${module}.js`, `${alias}/${module}.js`);
 const { destinationSlug, parseParticipantQuery, validateAdminDestination } = await import("../.phase3-test-build/lib/admin.js");
 assert.deepEqual(parseParticipantQuery(new URLSearchParams("limit=20&page=2&role=OPERATOR&status=APPROVED&accountStatus=ACTIVE&search=%20Pilot%20%20Operator%20")), { limit: 20, page: 2, role: "OPERATOR", status: "APPROVED", accountStatus: "ACTIVE", search: "Pilot Operator" });
 assert.deepEqual(parseParticipantQuery(new URLSearchParams("role=ADMIN")), { limit: 20, page: 1, role: "ADMIN", status: "", accountStatus: "", search: "" });

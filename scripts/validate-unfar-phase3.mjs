@@ -17,6 +17,7 @@ const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", 
 const build = ".phase3-test-build/lib/proposals.js"; writeFileSync(build, readFileSync(build, "utf8").replace('require("server-only");', ""));
 const alias = ".phase3-test-build/node_modules/@/lib"; mkdirSync(alias, { recursive: true });
 writeFileSync(`${alias}/marketplace.js`, "exports.profileIsComplete = () => true;\n"); writeFileSync(`${alias}/profiles.js`, "exports.publicDisplayName = value => value || '';\n"); writeFileSync(`${alias}/journey-requests.js`, "exports.DISCOVERY_SELECT={id:true}; exports.JOURNEY_REQUEST_LIMITS={minDurationMinutes:15,maxDurationMinutes:480,maxPriceMinor:10000000}; exports.materializeExpiredJourneyRequests=async()=>({count:0});\n");
+writeFileSync(`${alias}/safety-restriction-lock.js`, "exports.acquireSafetyRestrictionParticipantLocks=async()=>[];exports.hasEffectiveSafetyRestrictionInTransaction=async()=>false;\n");
 const { validateProposalInput } = await import(`../${build}`);
 const now = new Date("2026-08-01T12:00:00Z"), request = { earliestStart: new Date("2026-08-03T12:00:00Z"), latestStart: new Date("2026-08-04T12:00:00Z"), expiresAt: new Date("2026-08-03T18:00:00Z"), currency: "USD" };
 const valid = { earliestStart: "2026-08-03T14:00:00Z", latestStart: "2026-08-03T16:00:00Z", durationMinutes: 60, proposedPriceMinor: 3000, currency: "usd", validUntil: "2026-08-03T13:00:00Z" };

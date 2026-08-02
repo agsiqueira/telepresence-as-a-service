@@ -4,7 +4,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 
 const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "scripts/tsconfig.phase3-db.json"], { stdio: "inherit" });
 if (compile.status !== 0) process.exit(compile.status ?? 1);
-for (const module of ["marketplace", "marketplace-vocabulary", "profiles"]) {
+for (const module of ["marketplace", "marketplace-vocabulary", "profiles", "safety-restriction-lock"]) {
   const path = `.phase3-test-build/lib/${module}.js`;
   writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', ""));
 }
@@ -12,6 +12,7 @@ const alias = ".phase3-test-build/node_modules/@/lib";
 mkdirSync(alias, { recursive: true });
 cpSync(".phase3-test-build/lib/marketplace.js", `${alias}/marketplace.js`);
 cpSync(".phase3-test-build/lib/marketplace-vocabulary.js", `${alias}/marketplace-vocabulary.js`);
+cpSync(".phase3-test-build/lib/safety-restriction-lock.js", `${alias}/safety-restriction-lock.js`);
 const { publicDisplayName, validateOperatorPresentation, validateViewerProfile } = await import("../.phase3-test-build/lib/profiles.js");
 const { profileIsComplete } = await import("../.phase3-test-build/lib/marketplace.js");
 

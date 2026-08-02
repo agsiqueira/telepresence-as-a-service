@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { AccountStatus, JourneyRequestStatus, Role } from "@prisma/client";
 
@@ -15,6 +15,8 @@ const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", 
 if (compile.status !== 0) process.exit(compile.status ?? 1);
 const build = ".phase3-test-build/lib/journey-requests.js";
 writeFileSync(build, readFileSync(build, "utf8").replace('require("server-only");', ""));
+mkdirSync(".phase3-test-build/node_modules/@/lib", { recursive: true });
+writeFileSync(".phase3-test-build/node_modules/@/lib/safety-restriction-lock.js", "exports.acquireSafetyRestrictionParticipantLocks=async()=>[];exports.hasEffectiveSafetyRestrictionInTransaction=async()=>false;\n");
 const { createJourneyRequest, discoverOpenJourneyRequests, getOwnedJourneyRequest, listOwnedJourneyRequests, validateJourneyRequestInput, withdrawJourneyRequest } = await import(`../${build}`);
 
 const now = new Date("2026-08-01T12:00:00Z"), earliest = new Date("2026-08-02T12:00:00Z"), latest = new Date("2026-08-03T12:00:00Z"), expires = new Date("2026-08-03T00:00:00Z");

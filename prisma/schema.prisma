@@ -201,6 +201,8 @@ model User {
   proposedReschedules             ScheduledJourneyRescheduleProposal[]
   journeyReviewsAuthored          JourneyReview[]                      @relation("JourneyReviewsAuthored")
   journeyReviewsReceived          JourneyReview[]                      @relation("JourneyReviewsReceived")
+  simulatedTipsGiven              SimulatedTip[]                       @relation("SimulatedTipsGiven")
+  simulatedTipsReceived           SimulatedTip[]                       @relation("SimulatedTipsReceived")
   safetyReportsAuthored           SafetyReport[]                       @relation("SafetyReportsAuthored")
   safetyReportsReceived           SafetyReport[]                       @relation("SafetyReportsReceived")
   safetyReportTriageEvents        SafetyReportTriageEvent[]            @relation("SafetyReportTriageAdministrators")
@@ -373,6 +375,7 @@ model Trip {
   scheduledReservations ScheduledJourneyReservation[]
   rescheduleProposals   ScheduledJourneyRescheduleProposal[]
   reviews               JourneyReview[]
+  simulatedTip          SimulatedTip?
   safetyReports         SafetyReport[]
 
   @@unique([id, viewerId, operatorId])
@@ -565,6 +568,23 @@ model JourneyReview {
   @@unique([tripId, reviewerRole])
   @@index([revieweeId, revieweeRole, submittedAt])
   @@index([tripId, submittedAt])
+}
+
+model SimulatedTip {
+  id           String   @id @default(uuid()) @db.Uuid
+  trip         Trip     @relation(fields: [tripId, explorerId, teleporterId], references: [id, viewerId, operatorId], onDelete: Restrict)
+  tripId       String   @unique
+  explorer     User     @relation("SimulatedTipsGiven", fields: [explorerId], references: [id], onDelete: Restrict)
+  explorerId   String
+  teleporter   User     @relation("SimulatedTipsReceived", fields: [teleporterId], references: [id], onDelete: Restrict)
+  teleporterId String
+  amountMinor  Int
+  currency     String   @db.Char(3)
+  submittedAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([tripId, explorerId, teleporterId])
+  @@index([explorerId, submittedAt])
+  @@index([teleporterId, submittedAt])
 }
 
 model SafetyReport {

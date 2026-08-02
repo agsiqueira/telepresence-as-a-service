@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import SimulatedTipPanel from "@/components/SimulatedTipPanel";
 
 type PerformedRole = "EXPLORER" | "TELEPORTER";
 type PublicReview = { rating: number; comment: string | null; submittedAt: string; author: { role: PerformedRole; displayName: string } };
@@ -19,7 +20,11 @@ const boundedError = (code: unknown, fallback: string) => {
   return fallback;
 };
 
-export default function JourneyReviewPanel({ tripId }: { tripId: string }) {
+export default function JourneyReviewAndTipPanel({ tripId }: { tripId: string }) {
+  return <><JourneyReviewPanel tripId={tripId}/><SimulatedTipPanel tripId={tripId}/></>;
+}
+
+function JourneyReviewPanel({ tripId }: { tripId: string }) {
   const [state, setState] = useState<ReviewState | null>(null), [rating, setRating] = useState(0), [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true), [loadingMore, setLoadingMore] = useState(false), [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(""), [announcement, setAnnouncement] = useState("");
