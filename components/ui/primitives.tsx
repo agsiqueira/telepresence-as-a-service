@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { cloneElement, forwardRef, isValidElement, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactElement, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import Link, { type LinkProps } from "next/link";
 
 const join = (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(" ");
@@ -14,9 +14,9 @@ const buttonVariants: Record<ButtonVariant, string> = {
 export function buttonClassName(variant: ButtonVariant = "primary", className?: string) {
   return join("inline-flex min-h-control items-center justify-center gap-2 rounded-md px-4 py-2 text-label transition-colors duration-fast ease-standard disabled:cursor-not-allowed disabled:opacity-60", buttonVariants[variant], className);
 }
-export function Button({ variant = "primary", className, type = "button", ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
-  return <button type={type} className={buttonClassName(variant, className)} {...props} />;
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }>(function Button({ variant = "primary", className, type = "button", ...props }, ref) {
+  return <button ref={ref} type={type} className={buttonClassName(variant, className)} {...props} />;
+});
 export function ActionLink({ variant = "primary", className, ...props }: LinkProps & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof LinkProps> & { variant?: ButtonVariant }) {
   return <Link className={buttonClassName(variant, className)} {...props} />;
 }

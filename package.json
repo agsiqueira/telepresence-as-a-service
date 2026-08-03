@@ -88,6 +88,7 @@
     "test:phase7a": "node scripts/validate-phase7a-design-foundation.mjs",
     "test:phase7b2": "node scripts/validate-phase7b2-explorer-shell.mjs",
     "test:phase7b3": "node scripts/validate-phase7b3-explorer-discover.mjs",
+    "test:phase7b4": "node scripts/validate-phase7b4-explorer-requests.mjs",
     "test:feedback-reload": "node scripts/validate-feedback-reload-remediation.mjs",
     "test:safety-reporting:phase1": "node scripts/validate-safety-reporting-phase1.mjs",
     "test:safety-reporting:phase1:db": "node scripts/run-safety-reporting-phase1-db-tests.mjs",

@@ -10,6 +10,6 @@ assert.match(service,/request\.explorerId !== explorerId/);assert.match(service,
 assert.doesNotMatch(service,/assignNextOperator|TripStatus\.NO_OPERATOR_AVAILABLE|payment|refund|GuidedExperience|LiveMoment/i);
 for(const path of ["app/api/journey-requests/[id]/proposals/[proposalId]/accept/route.ts","app/api/journey-requests/[id]/agreement/route.ts"])assert.match(read(path),/authorizeExplorerApi/);
 for(const path of ["app/api/operator/agreements/route.ts","app/api/operator/agreements/[id]/route.ts"])assert.match(read(path),/authorizeExplorerApi/);
-assert.match(read("app/api/admin/agreements/route.ts"),/authorizeAdminApi/);assert.match(read("components/ReceivedProposals.tsx"),/Accept Proposal/);assert.match(read("components/AgreementConfirmation.tsx"),/Journey confirmed/);
+assert.match(read("app/api/admin/agreements/route.ts"),/authorizeAdminApi/);assert.match(read("components/ReceivedProposals.tsx"),/Accept Proposal/);assert.match(read("components/AgreementConfirmation.tsx"),/Confirmed scheduled Journey/);
 assert.doesNotMatch(read("lib/proposals.ts"),/privateMeetingDetails/);assert.doesNotMatch(read("components/ProposalManager.tsx"),/privateMeetingDetails|explorerId|clerkId/);
 console.log("Unfar Phase 4 atomic Agreement structural validation passed");
