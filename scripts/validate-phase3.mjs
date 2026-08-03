@@ -62,7 +62,7 @@ assert.match(services, /error\.code === "P2034"/);
 assert.match(services, /status: OfferStatus\.DECLINED/);
 assert.match(services, /assignNextOperator\(tx, tripId, now\)/);
 assert.match(services, /activeTripId: tripId/);
-assert.match(viewer, /Request this visit/);
+assert.match(viewer, /Request this Journey/);
 assert.match(operator, /Immediate visit offer/);
 assert.match(operator, /offerAction \|\| offerSeconds <= 0/);
 assert.doesNotMatch(operator, /status=REQUESTED/);

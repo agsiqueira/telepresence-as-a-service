@@ -1,5 +1,89 @@
 "use client";
-import{useCallback,useEffect,useRef,useState}from"react";
-type Moment={id:string;publicPlaceName:string;coarseLocation:string;durationMinutes:number;priceMinor:number;currency:string;teleporterDisplayName:string;remainingCapacity:number;liveMoment:{availabilityStart:string;availabilityEnd:string;expiresAt:string}};type Claim={id:string;startAt:string;endAt:string;expiresAt:string;journeyRequestId:string;proposalId:string;listing:{publicPlaceName:string}};
-export default function LiveMomentDiscovery(){const[items,setItems]=useState<Moment[]>([]),[claims,setClaims]=useState<Claim[]>([]),[starts,setStarts]=useState<Record<string,string>>({}),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),status=useRef<HTMLDivElement>(null);const load=useCallback(async()=>{const[a,b]=await Promise.all([fetch("/api/live-moments",{cache:"no-store"}),fetch("/api/live-moment-claims",{cache:"no-store"})]);if(a.ok)setItems((await a.json()).liveMoments??[]);if(b.ok)setClaims((await b.json()).claims??[])},[]);useEffect(()=>{void load();const visible=()=>{if(document.visibilityState==="visible")void load()};window.addEventListener("focus",load);document.addEventListener("visibilitychange",visible);return()=>{window.removeEventListener("focus",load);document.removeEventListener("visibilitychange",visible)}},[load]);async function claim(item:Moment){const start=starts[item.id];if(!start){setMessage("Choose a start time first.");status.current?.focus();return}setBusy(true);const r=await fetch(`/api/live-moments/${item.id}/claim`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({startAt:new Date(start).toISOString()})});setBusy(false);setMessage(r.ok?"Live Moment held for ten minutes. Confirm the Proposal to schedule your Journey.":"That start is no longer available.");await load();status.current?.focus()}async function abandon(id:string){await fetch(`/api/live-moment-claims/${id}/abandon`,{method:"POST"});setMessage("Live Moment hold released.");await load();status.current?.focus()}
-return <section aria-labelledby="live-moment-discovery-title" className="mt-8 rounded-2xl border border-slate-200 bg-white p-5"><h2 id="live-moment-discovery-title" className="text-xl font-semibold">Live Moments</h2><p className="text-sm text-slate-600">Choose an exact start within a published window. A successful hold lasts ten minutes according to the server.</p><div ref={status} tabIndex={-1} role="status" aria-live="polite" className="mt-2">{message}</div>{claims.length>0&&<div className="mt-4"><h3 className="font-semibold">Your active holds</h3>{claims.map(c=><div key={c.id} className="mt-2 rounded border p-3"><p>{c.listing.publicPlaceName}: {new Date(c.startAt).toLocaleString()}–{new Date(c.endAt).toLocaleTimeString()}</p><p className="text-sm">Expires {new Date(c.expiresAt).toLocaleTimeString()}. Server availability is authoritative.</p><a className="mr-3 underline" href={`/viewer/requests/${c.journeyRequestId}`}>Review Proposal</a><button onClick={()=>abandon(c.id)} className="rounded border px-2 py-1">Abandon hold</button></div>)}</div>}<ul className="mt-5 space-y-3">{items.map(item=><li key={item.id} className="rounded border p-3"><h3 className="font-semibold">{item.publicPlaceName}</h3><p>Hosted by {item.teleporterDisplayName||"Verified Teleporter"} · {item.coarseLocation}</p><p>{item.durationMinutes} minutes · {(item.priceMinor/100).toFixed(2)} {item.currency} · {item.remainingCapacity} slot{item.remainingCapacity===1?"":"s"} remaining</p><p className="text-sm">{new Date(item.liveMoment.availabilityStart).toLocaleString()} – {new Date(item.liveMoment.availabilityEnd).toLocaleString()}</p><label className="mt-2 block">Start time<input type="datetime-local" min={item.liveMoment.availabilityStart.slice(0,16)} max={item.liveMoment.availabilityEnd.slice(0,16)} value={starts[item.id]??""} onChange={e=>setStarts({...starts,[item.id]:e.target.value})} className="block rounded border p-2" aria-describedby={`window-${item.id}`}/></label><span id={`window-${item.id}`} className="sr-only">The full {item.durationMinutes} minute interval must fit inside the published window.</span><button disabled={busy} onClick={()=>claim(item)} className="mt-2 rounded bg-sky-700 px-3 py-2 text-white disabled:opacity-50">Hold and review</button></li>)}</ul></section>}
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import DiscoveryCard from "@/components/explorer/DiscoveryCard";
+import { ActionLink, Button, LiveRegion, MetadataList, Notice, Skeleton, StatePanel, Surface } from "@/components/ui/primitives";
+
+type Moment = { id: string; publicPlaceName: string; coarseLocation: string; durationMinutes: number; liveMoment: { availabilityStart: string; availabilityEnd: string; expiresAt: string } };
+type Claim = { id: string; startAt: string; endAt: string; expiresAt: string; journeyRequestId: string; proposalId: string; listing: { publicPlaceName: string } };
+type LoadState = "loading" | "refreshing" | "ready" | "failed";
+
+export default function LiveMomentDiscovery({ restricted = false }: { restricted?: boolean }) {
+  const [items, setItems] = useState<Moment[]>([]);
+  const [claims, setClaims] = useState<Claim[]>([]);
+  const [starts, setStarts] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState("");
+  const [state, setState] = useState<LoadState>("loading");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const status = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async (background = false) => {
+    setState(current => background && current === "ready" ? "refreshing" : "loading");
+    try {
+      const [availableResponse, claimsResponse] = await Promise.all([
+        fetch("/api/live-moments", { cache: "no-store" }),
+        fetch("/api/live-moment-claims", { cache: "no-store" }),
+      ]);
+      if (!availableResponse.ok || !claimsResponse.ok) throw new Error("Live Moments unavailable");
+      const available = await availableResponse.json();
+      const current = await claimsResponse.json();
+      setItems(available.liveMoments ?? []);
+      setClaims(current.claims ?? []);
+      setState("ready");
+    } catch {
+      setState("failed");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const refresh = () => { if (document.visibilityState === "visible") void load(true); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [load]);
+
+  function announce(value: string) {
+    setMessage(value);
+    requestAnimationFrame(() => status.current?.focus());
+  }
+
+  async function claim(item: Moment) {
+    const start = starts[item.id];
+    if (!start) { announce(`Choose a start time for ${item.publicPlaceName} first.`); return; }
+    setBusyId(item.id);
+    try {
+      const response = await fetch(`/api/live-moments/${item.id}/claim`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ startAt: new Date(start).toISOString() }) });
+      if (!response.ok) throw new Error("That start is no longer available. Refreshing Live Moments.");
+      announce("Live Moment held for ten minutes. Review the Proposal to continue.");
+      await load(true);
+    } catch (error) {
+      announce(error instanceof Error ? error.message : "Live Moment is temporarily unavailable.");
+      await load(true);
+    } finally { setBusyId(null); }
+  }
+
+  async function abandon(id: string) {
+    setBusyId(id);
+    try {
+      const response = await fetch(`/api/live-moment-claims/${id}/abandon`, { method: "POST" });
+      if (!response.ok) throw new Error("The hold could not be released. Refresh and try again.");
+      announce("Live Moment hold released.");
+      await load(true);
+    } catch (error) { announce(error instanceof Error ? error.message : "The hold could not be released."); }
+    finally { setBusyId(null); }
+  }
+
+  return (
+    <section aria-labelledby="live-moment-discovery-title" className="mt-10">
+      <div className="max-w-prose"><h2 id="live-moment-discovery-title" className="text-heading-2">Live Moments</h2><p className="mt-2 text-body-sm text-ink-secondary">Choose an exact start within a published window. A successful server hold lasts ten minutes.</p></div>
+      <div ref={status} tabIndex={-1} className="outline-none"><LiveRegion className="mt-3">{message}</LiveRegion></div>
+      {restricted && <Notice className="mt-4" variant="warning" title="Live Moments are read-only"><p>Your safety restriction prevents new holds. Existing holds remain visible.</p></Notice>}
+      {claims.length > 0 && <div className="mt-5"><h3 className="text-heading-3">Active Live Moment holds</h3><div className="mt-3 grid gap-4 lg:grid-cols-2">{claims.map(claim => <DiscoveryCard key={claim.id} title={claim.listing.publicPlaceName} typeLabel="Live Moment hold" status="Hold active" statusTone="warning" metadata={<MetadataList items={[{ term: "Journey time", detail: `${new Date(claim.startAt).toLocaleString()} – ${new Date(claim.endAt).toLocaleTimeString()}` }, { term: "Hold expires", detail: new Date(claim.expiresAt).toLocaleString() }]} />} action={<div className="flex flex-col gap-2 sm:flex-row"><ActionLink href={`/viewer/requests/${claim.journeyRequestId}`} className="w-full sm:w-auto" aria-label={`Review Proposal for ${claim.listing.publicPlaceName}`}>Review Proposal</ActionLink><Button variant="secondary" disabled={busyId === claim.id || restricted} onClick={() => void abandon(claim.id)} className="w-full sm:w-auto">{busyId === claim.id ? "Releasing…" : "Release hold"}</Button></div>} />)}</div></div>}
+      {state === "loading" && <div className="mt-5 grid gap-4 lg:grid-cols-2" aria-busy="true"><Surface><Skeleton className="w-28"/><Skeleton className="mt-4 w-3/4"/><Skeleton className="mt-3 w-full"/></Surface><Surface><Skeleton className="w-24"/><Skeleton className="mt-4 w-2/3"/><Skeleton className="mt-3 w-full"/></Surface><span className="sr-only" role="status">Loading Live Moments…</span></div>}
+      {state === "failed" && <StatePanel title="Live Moments are temporarily unavailable" tone="danger" action={<Button variant="secondary" onClick={() => void load()}>Retry Live Moments</Button>}><p>Other discovery options remain available.</p></StatePanel>}
+      {(state === "ready" || state === "refreshing") && items.length === 0 && <StatePanel title="No Live Moments available"><p>Check Guided Experiences and destinations, or return later.</p></StatePanel>}
+      {(state === "ready" || state === "refreshing") && items.length > 0 && <div className="mt-5 grid gap-4 lg:grid-cols-2" aria-busy={state === "refreshing" || undefined}>{items.map(item => <DiscoveryCard key={item.id} title={item.publicPlaceName} typeLabel="Live Moment" status={restricted ? "Read-only" : busyId === item.id ? "Creating hold" : "Available"} statusTone={restricted ? "warning" : busyId === item.id ? "info" : "success"} metadata={<MetadataList items={[{ term: "Location", detail: item.coarseLocation }, { term: "Available window", detail: `${new Date(item.liveMoment.availabilityStart).toLocaleString()} – ${new Date(item.liveMoment.availabilityEnd).toLocaleString()}` }, { term: "Duration", detail: `${item.durationMinutes} minutes` }]} />} action={<div><label className="text-label" htmlFor={`live-start-${item.id}`}>Start time</label><input id={`live-start-${item.id}`} type="datetime-local" min={item.liveMoment.availabilityStart.slice(0,16)} max={item.liveMoment.availabilityEnd.slice(0,16)} value={starts[item.id] ?? ""} onChange={event => setStarts(current => ({ ...current, [item.id]: event.target.value }))} className="unfar-control mt-2" aria-describedby={`window-${item.id}`} disabled={restricted}/><p id={`window-${item.id}`} className="mt-2 text-body-sm text-ink-muted">The full {item.durationMinutes}-minute Journey must fit inside this window.</p><Button disabled={busyId !== null || restricted} onClick={() => void claim(item)} className="mt-4 w-full" aria-label={`Hold Live Moment at ${item.publicPlaceName}`}>{busyId === item.id ? "Creating hold…" : "Hold and review"}</Button></div>} />)}</div>}
+    </section>
+  );
+}

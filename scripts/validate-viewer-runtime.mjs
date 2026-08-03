@@ -17,7 +17,7 @@ assert.match(viewer, /includes\("application\/json"\)/);
 assert.match(viewer, /JSON\.parse\(body\)/);
 assert.match(viewer, /if \(!response\.ok\)/);
 assert.match(viewer, /destinationsState/);
-assert.match(viewer, /Destinations could not be loaded/);
+assert.match(viewer, /Destinations are temporarily unavailable/);
 assert.match(viewer, /Current Journey could not be restored/);
 assert.match(journeys, /Journey history could not be loaded/);
 assert.match(journeys, /historyState === "loading"/);

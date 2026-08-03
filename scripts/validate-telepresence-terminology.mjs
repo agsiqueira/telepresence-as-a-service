@@ -9,10 +9,10 @@ const lifecycle = read("lib/trip-lifecycle.ts");
 const schema = read("prisma/schema.prisma");
 const seed = read("prisma/seed.js");
 
-assert.match(viewer, /Starting-point preference \(optional\)/);
-assert.match(viewer, /Otherwise, the Teleporter will choose an appropriate starting point/);
+assert.match(viewer, /label="Starting-point preference" optional/);
+assert.match(viewer, /the Teleporter will choose an appropriate place to begin/);
 assert.match(viewer, /placeholder="Example: Begin outside the main entrance"/);
-assert.match(viewer, /Journey instructions \(optional\)/);
+assert.match(viewer, /label="Journey instructions" optional/);
 assert.match(viewer, /Cancel request/);
 assert.doesNotMatch(viewer, /Describe where to meet|Meeting instructions|Custom public destination/);
 assert.match(operator, /No starting preference provided\. Choose an appropriate place to begin the video visit\./);

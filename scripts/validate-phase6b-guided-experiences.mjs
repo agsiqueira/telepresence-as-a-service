@@ -37,12 +37,12 @@ for (const route of [
 ]) assert.ok(read(route).includes("Cache-Control") || route.endsWith("abandon/route.ts"), `route: ${route}`);
 
 for (const source of [manager, discovery]) {
-  assert.ok(source.includes('aria-live="polite"'));
+  assert.ok(source.includes('aria-live="polite"') || source.includes("LiveRegion"));
   assert.ok(source.includes("disabled"));
 }
 assert.ok(manager.includes('type="datetime-local"') && manager.includes("toISOString"));
 assert.ok(manager.includes("No recurrence is generated"));
-assert.ok(discovery.includes("Claim this occurrence") && discovery.includes("Abandon claim"));
+assert.ok(discovery.includes("Claim and review") && discovery.includes("Release claim"));
 
 console.log("PASS Phase 6B schema, migration, lifecycle, API, privacy, and strict-source validation: 48/48");
 console.log("PASS Phase 6B participant UI and accessibility source validation: 12/12");
