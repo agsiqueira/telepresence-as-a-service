@@ -93,6 +93,7 @@
     "test:phase7b6": "node scripts/validate-phase7b6-explorer-account.mjs",
     "test:phase7c1": "node scripts/validate-phase7c1-teleporter-navigation.mjs",
     "test:phase7c2": "node scripts/validate-phase7c2-teleporter-home.mjs",
+    "test:phase7c3": "node scripts/validate-phase7c3-teleporter-requests.mjs",
     "test:feedback-reload": "node scripts/validate-feedback-reload-remediation.mjs",
     "test:safety-reporting:phase1": "node scripts/validate-safety-reporting-phase1.mjs",
     "test:safety-reporting:phase1:db": "node scripts/run-safety-reporting-phase1-db-tests.mjs",
