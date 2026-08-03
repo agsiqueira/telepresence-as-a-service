@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { JourneyRequestStatus, PrismaClient, ProposalStatus, Role, SupplyCapacityClaimStatus, SupplyStatus, SupplyType, TripStatus } from "@prisma/client";
 import { cancelTrip } from "../lib/trip-lifecycle";
+import { initiateLiveMoment } from "../lib/live-moments";
+import { acceptProposal } from "../lib/agreements";
 
 const db = new PrismaClient();
 const run = `p6a-${randomUUID()}`;
@@ -65,6 +67,21 @@ async function main() {
   const replacement = await db.supplyCapacityClaim.create({ data: { listingId: listing.id, liveMomentId: liveId, explorerId: e2.id, teleporterId: t.id, startAt: claimStart, endAt: claimEnd, expiresAt: new Date(0) } });
   assert.equal(replacement.status, SupplyCapacityClaimStatus.HELD);
   pass("restored committed capacity can be claimed again without weakening overlap enforcement");
+
+  const serviceListing = await db.supplyListing.create({ data: { teleporterId: t.id, type: SupplyType.LIVE_MOMENT, publicPlaceName: "Gallery", coarseLocation: "Downtown", durationMinutes: 30, priceMinor: 2600, currency: "USD", capacity: 1 } });
+  const serviceStart = new Date(start.getTime() + 14_400_000), serviceEnd = new Date(serviceStart.getTime() + 3_600_000);
+  const serviceLive = await db.liveMoment.create({ data: { listingId: serviceListing.id, availabilityStart: serviceStart, availabilityEnd: serviceEnd, expiresAt: serviceEnd } });
+  await db.supplyListing.update({ where: { id: serviceListing.id }, data: { status: SupplyStatus.PUBLISHED, publishedAt: new Date() } });
+  const serviceExplorer = await user("Live lifecycle explorer");
+  const serviceClaim = await initiateLiveMoment(db, serviceExplorer.id, serviceListing.id, { startAt: serviceStart.toISOString() });
+  const serviceAccepted = await acceptProposal(db, serviceExplorer.id, serviceClaim.journeyRequestId!, serviceClaim.proposalId!, {});
+  assert.equal(serviceAccepted.ok, true);
+  const serviceCommitted = await db.supplyCapacityClaim.findUniqueOrThrow({ where: { id: serviceClaim.id }, include: { journeyRequest: true, proposal: true, agreement: true, trip: true } });
+  assert.equal(serviceCommitted.status, SupplyCapacityClaimStatus.COMMITTED);
+  assert.equal(serviceCommitted.journeyRequest?.supplyListingId, serviceListing.id);
+  assert.equal(serviceCommitted.proposal?.supplyListingId, serviceListing.id);
+  assert.equal(await db.scheduledJourneyReservation.count({ where: { tripId: serviceCommitted.tripId! } }), 1);
+  pass("Live Moment initiation converges transactionally through Request, Proposal, Agreement, Trip, reservation, and committed claim");
 
   await db.supplyCapacityClaim.update({ where: { id: replacement.id }, data: { status: SupplyCapacityClaimStatus.RELEASED, releasedAt: new Date() } });
   const paused = await committedBooking(listing.id, liveId, e.id, t.id, new Date(start.getTime() + 4_800_000));
