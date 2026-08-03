@@ -12,8 +12,8 @@ export type FieldErrors = Partial<Record<keyof ApplicationForm, string>>;
 export const emptyApplicationForm = (): ApplicationForm => ({ qualifications: "", relevantExperience: "", languages: [], availability: "", supportingUrl: "", additionalNote: "" });
 export const statusCopy: Record<ApplicationStatus, { label: string; next: string }> = {
   PENDING: { label: "Pending", next: "Your application is awaiting administrator review. You may withdraw it while it remains pending." },
-  APPROVED: { label: "Approved", next: "Your application was approved and your account has been promoted to Operator." },
-  REJECTED: { label: "Rejected", next: "You may review the feedback and submit a new application if you remain a Viewer." },
+  APPROVED: { label: "Approved", next: "Your application was approved and your account now has Teleporter access." },
+  REJECTED: { label: "Rejected", next: "You may review the feedback and submit a new application if you remain an Explorer." },
   WITHDRAWN: { label: "Withdrawn", next: "This application remains in your history. You may submit a new application." },
 };
 
@@ -56,7 +56,7 @@ export function createOperatorApplicationController(fetcher: typeof fetch) {
       if (submitting) return { kind: "busy" as const, message: "" }; submitting = true;
       try { const response = await fetcher("/api/operator-applications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submissionPayload(form)) });
         if (!response.ok) { const code = await responseCode(response); if (code === "PENDING_APPLICATION_EXISTS") await refresh(); return { kind: "error" as const, code, message: safeApplicationError(code, "The application could not be submitted. Please try again.") }; }
-        await refresh(); return { kind: "success" as const, message: "Your Operator application was submitted." };
+        await refresh(); return { kind: "success" as const, message: "Your Teleporter application was submitted." };
       } catch { return { kind: "error" as const, code: null, message: "The application could not be submitted. Please try again." }; } finally { submitting = false; }
     },
     async withdraw(id: string, refresh: () => Promise<void>) {
