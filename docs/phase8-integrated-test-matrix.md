@@ -167,3 +167,38 @@ Granular Phase 8.5 scenarios:
 - **Passed — browser:** public landing, sign-in, and sign-up at 320px, 390px, 768px, and 1280px; signed-out protected-route redirects and return URLs.
 - **Passed — source inspection:** protected headings/landmarks, form labels/groups, status markers, navigation, responsive wrapping, safe areas, and dialog semantics. This is not visual, keyboard, or screen-reader passage.
 - **Manual test required:** protected breakpoint visuals, keyboard completion, screen-reader behavior, localization resilience, long-content states, and 200% zoom/reflow.
+
+## Phase 8.6 prototype-acceptance overlay
+
+**Acceptance outcome:** `Conditionally accepted pending paired-device LiveKit validation`.
+
+This overlay preserves every earlier evidence classification. It does not convert database, automated, public-browser, or source evidence into authenticated-browser or real-device passage.
+
+| Capability group | Acceptance status | Best evidence | Waivers / unresolved items | Acceptance effect |
+| --- | --- | --- | --- | --- |
+| Product architecture and role boundaries | Accepted for conditional prototype use | Automated, database, source | `AUTH-W01`, `IA-W01` | Supports controlled non-media demonstration. |
+| Journey lifecycle and persistence | Accepted for conditional prototype use | Guarded database, automated | Paired-browser convergence remains blocked | Strong server-authoritative contract; visual passage still required. |
+| Policy, privacy, Safety, and role transition | Accepted for conditional prototype use | Guarded database, automated, source | `AUTH-W01` | No confirmed critical/high defect; authenticated visual passage incomplete. |
+| Requests, Proposals, Agreements, and rescheduling | Accepted for conditional prototype use | Guarded database, automated | `AUTH-W01` | Suitable for prepared demonstration after smoke testing. |
+| Feedback, Reviews, simulated Tips, and Offerings | Accepted for conditional prototype use | Automated, database, source | `AUTH-W01` | Regression coverage exists; protected browser passage remains incomplete. |
+| Responsive, keyboard, dialog, and terminology quality | Conditional | Public browser, automated, source | `A11Y-W01`, `RESP-W01` | Public surfaces passed; protected/assistive/physical passage remains required. |
+| Real-time LiveKit operation | Required validation pending | Source and automated only | `LIVE-W01`–`LIVE-W05` | Blocks full functional-prototype acceptance and pilot readiness. |
+| Explorer information architecture | Deferred product decision | Repository/source inspection | `IA-W01`; `IA-01` remains unresolved | Does not block a controlled four-destination demo; must not be represented as resolved. |
+
+### Waiver and readiness summary
+
+- `AUTH-W01`: protected authenticated visual passage incomplete.
+- `A11Y-W01`: screen-reader execution incomplete.
+- `RESP-W01`: physical mobile and actual 200% zoom incomplete.
+- `LIVE-W01`: real paired LiveKit room unexecuted.
+- `LIVE-W02`: physical camera switching unexecuted.
+- `LIVE-W03`: real reconnection unexecuted.
+- `LIVE-W04`: real chat delivery unexecuted.
+- `LIVE-W05`: remote authoritative teardown unexecuted.
+- `IA-W01`: Explorer Home/Discover information architecture remains unresolved as `IA-01`.
+
+**Demo readiness:** Conditional for a controlled, prepared demonstration. A live Journey segment is not ready until the paired-device smoke test passes; static screenshots or a recording may be used only as presentation fallback, never as LiveKit evidence.
+
+**Pilot readiness:** Not ready. External participant use requires authenticated cross-role browser passage, one successful paired-device LiveKit run, physical mobile checks, permission handling, reconnection, refresh rejoin, chat delivery, and remote teardown evidence.
+
+**Required closure evidence:** Execute the Phase 8.5 paired-device runbook with authorized synthetic Explorer and Teleporter accounts; complete protected keyboard/screen-reader and actual zoom checks; record physical mobile behavior; and obtain an approved decision for `IA-01` if the five-destination Explorer target is still desired.
