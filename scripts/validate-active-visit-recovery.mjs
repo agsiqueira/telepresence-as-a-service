@@ -18,7 +18,7 @@ assert.match(operator, /if \(!online \|\| activeTrip\) return/);
 assert.match(operator, /!\["ACCEPTED", "IN_PROGRESS"\]\.includes/);
 assert.match(operator, /setTripEnded\(true\);\s*return "stop"/);
 assert.match(viewer, /trip\?\.status === "IN_PROGRESS"/);
-assert.match(viewer, /Reconnecting to the live visit/);
+assert.match(viewer, /Reconnecting to the live Portal/);
 assert.match(room, /Your visit is still active/);
 assert.match(room, /Camera or microphone permission was denied/);
 assert.match(room, /required camera or microphone was not found/);

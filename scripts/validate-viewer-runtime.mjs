@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const read = path => readFileSync(path, "utf8");
 const viewer = read("app/viewer/page.tsx");
+const journeys = read("components/explorer/ExplorerJourneys.tsx");
 const destinations = read("app/api/destinations/route.ts");
 const current = read("app/api/trips/current/route.ts");
 const history = read("app/api/trips/history/route.ts");
@@ -15,9 +16,11 @@ assert.match(viewer, /if \(!body\) throw new Error/);
 assert.match(viewer, /includes\("application\/json"\)/);
 assert.match(viewer, /JSON\.parse\(body\)/);
 assert.match(viewer, /if \(!response\.ok\)/);
-assert.match(viewer, /Unable to load destinations/);
-assert.match(viewer, /Unable to restore your current visit/);
-assert.match(viewer, /Unable to load visit history/);
+assert.match(viewer, /destinationsState/);
+assert.match(viewer, /Destinations could not be loaded/);
+assert.match(viewer, /Current Journey could not be restored/);
+assert.match(journeys, /Journey history could not be loaded/);
+assert.match(journeys, /historyState === "loading"/);
 assert.doesNotMatch(viewer, /fetch\("\/api\/(destinations|trips\/current|trips\/history)[^\n]*\n\s*\.then\([^\n]*response\.json/);
 
 for (const route of [destinations, current, history]) {

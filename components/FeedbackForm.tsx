@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { Button, Choice } from "@/components/ui/primitives";
 
 export default function FeedbackForm({
   tripId,
   onDone,
+  embedded = false,
 }: {
   tripId: string;
   onDone: () => void;
+  embedded?: boolean;
 }) {
   const [presence, setPresence] = useState(3);
   const [mediaQuality, setMediaQuality] = useState(3);
@@ -56,68 +59,68 @@ export default function FeedbackForm({
   }
 
   const scale = [1, 2, 3, 4, 5];
+  const Heading = embedded ? "h3" : "h1";
 
   return (
-    <div className="max-w-md mx-auto px-4 py-10">
-      <h2 className="text-xl font-semibold text-spartan-green mb-6">
-        How was your visit?
-      </h2>
+    <section className={embedded ? "mt-4" : "mx-auto max-w-md px-4 py-10"} aria-labelledby={`feedback-heading-${tripId}`}>
+      <Heading id={`feedback-heading-${tripId}`} className="mb-6 text-heading-2">
+        How was your Journey?
+      </Heading>
 
-      <div className="mb-6">
-        <p className="mb-2 text-sm text-gray-700">
+      <fieldset className="mb-6">
+        <legend className="mb-2 text-label text-ink">
           I felt like I was really there.
-        </p>
-        <div className="flex gap-2">
+        </legend>
+        <div className="flex flex-wrap gap-2">
           {scale.map((n) => (
-            <button
+            <Choice
               key={n}
-              onClick={() => setPresence(n)}
-              className={`w-10 h-10 rounded-full border ${
-                presence === n
-                  ? "bg-spartan-green text-white border-spartan-green"
-                  : "border-gray-300"
-              }`}
-            >
-              {n}
-            </button>
+              type="radio"
+              name={`presence-${tripId}`}
+              value={n}
+              checked={presence === n}
+              onChange={() => setPresence(n)}
+              label={`${n} of 5`}
+              className={`min-w-16 border ${presence === n ? "border-brand bg-brand-subtle" : "border-line"}`}
+            />
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      <div className="mb-8">
-        <p className="mb-2 text-sm text-gray-700">
+      <fieldset className="mb-8">
+        <legend className="mb-2 text-label text-ink">
           The video was clear enough to see details.
-        </p>
-        <div className="flex gap-2">
+        </legend>
+        <div className="flex flex-wrap gap-2">
           {scale.map((n) => (
-            <button
+            <Choice
               key={n}
-              onClick={() => setMediaQuality(n)}
-              className={`w-10 h-10 rounded-full border ${
-                mediaQuality === n
-                  ? "bg-spartan-green text-white border-spartan-green"
-                  : "border-gray-300"
-              }`}
-            >
-              {n}
-            </button>
+              type="radio"
+              name={`media-quality-${tripId}`}
+              value={n}
+              checked={mediaQuality === n}
+              onChange={() => setMediaQuality(n)}
+              label={`${n} of 5`}
+              className={`min-w-16 border ${mediaQuality === n ? "border-brand bg-brand-subtle" : "border-line"}`}
+            />
           ))}
         </div>
-      </div>
+      </fieldset>
 
-      <div className="flex gap-3">
-        <button
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Button
+          variant="primary"
           onClick={submit}
           disabled={submitting}
-          className="bg-spartan-green text-white px-5 py-2 rounded-md font-medium disabled:opacity-50"
+          className="w-full sm:w-auto"
         >
-          Submit
-        </button>
-        <button onClick={skip} disabled={submitting} className="text-gray-500 px-5 py-2 disabled:opacity-50">
+          {submitting ? "Submitting…" : "Submit private Feedback"}
+        </Button>
+        <Button variant="quiet" onClick={skip} disabled={submitting} className="w-full sm:w-auto">
           Skip
-        </button>
+        </Button>
       </div>
-      {error && <p className="text-red-600 text-sm mt-4">{error}</p>}
-    </div>
+      {error && <p className="mt-4 text-body-sm text-danger-fg" role="alert">{error}</p>}
+    </section>
   );
 }

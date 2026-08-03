@@ -4,13 +4,15 @@ import { readFileSync } from "node:fs";
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const panel = read("components/JourneyReviewPanel.tsx");
 const viewer = read("app/viewer/page.tsx");
+const explorerJourneys = read("components/explorer/ExplorerJourneys.tsx");
 const operator = read("app/operator/page.tsx");
 const service = read("lib/journey-reviews.ts");
 const route = read("app/api/trips/[id]/review/route.ts");
 const feedback = read("components/FeedbackForm.tsx");
 
-for (const source of [viewer, operator]) assert.match(source, /JourneyReviewPanel/);
-assert.match(viewer, /ENDED.*FEEDBACK_COMPLETED/);
+assert.match(explorerJourneys, /JourneyReviewPanel/);
+assert.match(operator, /JourneyReviewPanel/);
+assert.match(explorerJourneys, /ENDED.*FEEDBACK_COMPLETED/);
 assert.match(operator, /item\.status\s*===\s*"ACCEPTED"/);
 for (const token of [
   "counterpartyDisplayName", "Reviews are unavailable for this Journey", "Review window ends",
@@ -39,8 +41,8 @@ assert.match(service, /performed\.revieweeRole===JourneyReviewRole\.EXPLORER\?tr
 assert.match(route, /getJourneyReviewContext/);
 assert.doesNotMatch(route, /userId|performedRole.*searchParams/);
 assert.doesNotMatch(panel, /presence|mediaQuality|moodBefore|moodAfter|Feedback/);
-assert.match(feedback, /How was your visit/);
-for (const source of [viewer, operator]) assert.match(source, /trips\/history[^"\n]*limit=50/);
-assert.match(viewer, />Visit history</);
+assert.match(feedback, /How was your Journey/);
+for (const source of [explorerJourneys, operator]) assert.match(source, /trips\/history[^"\n]*limit=50/);
+assert.match(explorerJourneys, />Journey history</);
 assert.match(operator, />Offer and visit history</);
 console.log("Phase 5D.2 bilateral-review UI validation passed: 60/60");
