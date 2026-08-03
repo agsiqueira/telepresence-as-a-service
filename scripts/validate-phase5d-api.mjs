@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { OperatorApplicationStatus, Role } from "@prisma/client";
+import { AccountStatus, OperatorApplicationStatus, Role } from "@prisma/client";
 
 const routeFiles = {
   viewer: "app/api/operator-applications/route.ts",
@@ -40,10 +40,11 @@ const {
 } = api;
 
 const users = {
-  viewer: { id: "trusted-viewer", role: Role.VIEWER },
-  other: { id: "other-viewer", role: Role.VIEWER },
-  operator: { id: "trusted-operator", role: Role.OPERATOR },
-  admin: { id: "trusted-admin", role: Role.ADMIN },
+  viewer: { id: "trusted-viewer", role: Role.VIEWER, accountStatus: AccountStatus.ACTIVE },
+  other: { id: "other-viewer", role: Role.VIEWER, accountStatus: AccountStatus.ACTIVE },
+  operator: { id: "trusted-operator", role: Role.OPERATOR, accountStatus: AccountStatus.ACTIVE },
+  admin: { id: "trusted-admin", role: Role.ADMIN, accountStatus: AccountStatus.ACTIVE },
+  deactivated: { id: "inactive-viewer", role: Role.VIEWER, accountStatus: AccountStatus.DEACTIVATED },
 };
 const getUser = user => async () => user;
 const application = (overrides = {}) => ({
@@ -83,7 +84,7 @@ for (const operation of ["GET", "POST"]) {
   const response = operation === "GET" ? await handlers.GET() : await handlers.POST(jsonRequest("http://localhost/api/operator-applications", {}));
   assert.equal(response.status, 401); assert.equal((await bodyOf(response)).code, "UNAUTHENTICATED"); assert.equal(called, 0);
 }
-for (const user of [users.operator, users.admin]) {
+for (const user of [users.admin, users.deactivated]) {
   const handlers = createViewerOperatorApplicationHandlers({ getUser: getUser(user) });
   assert.equal((await handlers.GET()).status, 403);
   assert.equal((await handlers.POST(jsonRequest("http://localhost/api/operator-applications", {}))).status, 403);
@@ -91,11 +92,21 @@ for (const user of [users.operator, users.admin]) {
 
 let calls = [];
 let handlers = createViewerOperatorApplicationHandlers({
+  getUser: getUser(users.operator),
+  list: async (...args) => { calls.push(args); return ok([application({ status: "APPROVED" })]); },
+  submit: async () => failed("TELEPORTER_APPLICATION_APPROVED"),
+});
+assert.equal((await handlers.GET()).status, 200);
+let response = await handlers.POST(jsonRequest("http://localhost/api/operator-applications", {}));
+assert.equal(response.status, 409); assert.equal((await bodyOf(response)).code, "TELEPORTER_APPLICATION_APPROVED");
+
+calls = [];
+handlers = createViewerOperatorApplicationHandlers({
   getUser: getUser(users.viewer),
   list: async (...args) => { calls.push(args); return ok([application()]); },
   submit: async (...args) => { calls.push(args); return ok(application()); },
 });
-let response = await handlers.GET();
+response = await handlers.GET();
 assert.equal(response.status, 200); let responseBody = await bodyOf(response);
 assert.equal(calls[0][1], users.viewer.id); assert.equal(responseBody.applications.length, 1); assert.equal("applicantId" in responseBody.applications[0], false); assert.equal("secret" in responseBody.applications[0], false);
 response = await handlers.POST(jsonRequest("http://localhost/api/operator-applications", { qualifications: "trusted body" }));
@@ -119,7 +130,7 @@ handlers = createViewerOperatorApplicationHandlers({
 response = await handlers.POST(jsonRequest("http://localhost/api/operator-applications", { applicantId: "forged", reviewerId: "forged", status: "APPROVED", auditId: "forged" }));
 assert.equal(response.status, 400); assert.equal((await bodyOf(response)).code, "VALIDATION_FAILED");
 
-for (const code of ["VALIDATION_FAILED", "PENDING_APPLICATION_EXISTS"]) {
+for (const code of ["VALIDATION_FAILED", "PENDING_APPLICATION_EXISTS", "TELEPORTER_APPLICATION_APPROVED"]) {
   handlers = createViewerOperatorApplicationHandlers({ getUser: getUser(users.viewer), submit: async () => failed(code) });
   response = await handlers.POST(jsonRequest("http://localhost/api/operator-applications", {}));
   assert.equal(response.status, operatorApplicationPublicFailures[code].status); assert.equal((await bodyOf(response)).code, code);
@@ -167,7 +178,7 @@ for (const [code, status] of [["VALIDATION_FAILED", 400], ["APPLICATION_NOT_PEND
   response = await review(jsonRequest("http://localhost", { decision: "APPROVED" }), context("application-1")); assert.equal(response.status, status); responseBody = await bodyOf(response); assert.equal(responseBody.code, code); assert.doesNotMatch(JSON.stringify(responseBody), /Prisma|P20|SQL|stack|secret/i);
 }
 
-const expectedCodes = ["UNAUTHENTICATED", "FORBIDDEN", "VALIDATION_FAILED", "PENDING_APPLICATION_EXISTS", "APPLICATION_NOT_FOUND", "APPLICATION_NOT_OWNED", "APPLICATION_NOT_PENDING", "APPLICANT_NOT_VIEWER", "UNFINISHED_VIEWER_OBLIGATION", "SERIALIZATION_RETRY_EXHAUSTED", "INTERNAL_INVARIANT_FAILURE"];
+const expectedCodes = ["UNAUTHENTICATED", "FORBIDDEN", "VALIDATION_FAILED", "PENDING_APPLICATION_EXISTS", "TELEPORTER_APPLICATION_APPROVED", "APPLICATION_NOT_FOUND", "APPLICATION_NOT_OWNED", "APPLICATION_NOT_PENDING", "APPLICANT_NOT_VIEWER", "UNFINISHED_VIEWER_OBLIGATION", "SERIALIZATION_RETRY_EXHAUSTED", "INTERNAL_INVARIANT_FAILURE"];
 assert.deepEqual(Object.keys(operatorApplicationPublicFailures).sort(), expectedCodes.sort());
 
 const logged = []; const originalConsoleError = console.error; console.error = (...args) => logged.push(args);

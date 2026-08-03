@@ -28,6 +28,7 @@ export const operatorApplicationPublicFailures = {
   FORBIDDEN: { status: 403, message: "Forbidden" },
   VALIDATION_FAILED: { status: 400, message: "Check the Operator application details" },
   PENDING_APPLICATION_EXISTS: { status: 409, message: "A pending Operator application already exists" },
+  TELEPORTER_APPLICATION_APPROVED: { status: 409, message: "This account already has an approved Teleporter application" },
   APPLICATION_NOT_FOUND: { status: 404, message: "Operator application not found" },
   APPLICATION_NOT_OWNED: { status: 404, message: "Operator application not found" },
   APPLICATION_NOT_PENDING: { status: 409, message: "Operator application is no longer pending" },
@@ -104,6 +105,13 @@ function authorize(user: CurrentUser | null, role: Role) {
   return null;
 }
 
+function authorizeApplicant(user: CurrentUser | null) {
+  if (!user) return ownFailure("Authentication is required", "UNAUTHENTICATED", 401);
+  if (isAccountDeactivated(user)) return ownFailure("This account has been deactivated. Contact an administrator for assistance.", "ACCOUNT_DEACTIVATED", 403);
+  if (user.role === Role.ADMIN) return ownFailure("Explorer capability is required", "FORBIDDEN", 403);
+  return null;
+}
+
 type ViewerDependencies = {
   getUser: GetUser;
   list: typeof listViewerOperatorApplications;
@@ -116,7 +124,7 @@ export function createViewerOperatorApplicationHandlers(overrides: Partial<Viewe
     GET: async () => {
       try {
         const user = await dependencies.getUser();
-        const denied = authorize(user, Role.VIEWER); if (denied) return denied;
+        const denied = authorizeApplicant(user); if (denied) return denied;
         const result = await dependencies.list(db, user!.id);
         if (!result.ok) return serviceFailure(result);
         return json({ applications: result.value.map(value => projectViewerApplication(value as unknown as Record<string, unknown>)) });
@@ -125,7 +133,7 @@ export function createViewerOperatorApplicationHandlers(overrides: Partial<Viewe
     POST: async (request: Request) => {
       try {
         const user = await dependencies.getUser();
-        const denied = authorize(user, Role.VIEWER); if (denied) return denied;
+        const denied = authorizeApplicant(user); if (denied) return denied;
         const body = await objectBody(request); if (!body.ok) return body.response;
         const result = await dependencies.submit(db, user!.id, body.value);
         if (!result.ok) return serviceFailure(result);
@@ -141,7 +149,7 @@ export function createViewerOperatorApplicationWithdrawHandler(overrides: Partia
   return async function POST(request: Request, { params }: RouteContext) {
     try {
       const user = await dependencies.getUser();
-      const denied = authorize(user, Role.VIEWER); if (denied) return denied;
+      const denied = authorizeApplicant(user); if (denied) return denied;
       if (!validId(params.id)) return ownFailure("Invalid Operator application ID", "INVALID_APPLICATION_ID", 400);
       if (request.body !== null) return ownFailure("Request body must be empty", "INVALID_REQUEST_BODY", 400);
       const result = await dependencies.withdraw(db, user!.id, params.id);

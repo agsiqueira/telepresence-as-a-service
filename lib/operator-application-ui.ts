@@ -41,6 +41,7 @@ export function submissionPayload(form: ApplicationForm) {
 }
 const safeMessages: Record<string, string> = {
   VALIDATION_FAILED: "Check the highlighted application details.", PENDING_APPLICATION_EXISTS: "You already have a pending application.",
+  TELEPORTER_APPLICATION_APPROVED: "Your Teleporter application is already approved. Open Teleporter tools to continue.",
   APPLICATION_NOT_FOUND: "This application is no longer available.", APPLICATION_NOT_PENDING: "This application’s status changed and it can no longer be withdrawn.",
   APPLICANT_NOT_VIEWER: "Only Viewer accounts can submit or withdraw applications.", UNFINISHED_VIEWER_OBLIGATION: "Complete your unfinished Viewer activity before this application can be approved.",
   SERIALIZATION_RETRY_EXHAUSTED: "The application changed repeatedly. Please try again.",
@@ -55,7 +56,7 @@ export function createOperatorApplicationController(fetcher: typeof fetch) {
     async submit(form: ApplicationForm, refresh: () => Promise<void>) {
       if (submitting) return { kind: "busy" as const, message: "" }; submitting = true;
       try { const response = await fetcher("/api/operator-applications", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submissionPayload(form)) });
-        if (!response.ok) { const code = await responseCode(response); if (code === "PENDING_APPLICATION_EXISTS") await refresh(); return { kind: "error" as const, code, message: safeApplicationError(code, "The application could not be submitted. Please try again.") }; }
+        if (!response.ok) { const code = await responseCode(response); if (code === "PENDING_APPLICATION_EXISTS" || code === "TELEPORTER_APPLICATION_APPROVED") await refresh(); return { kind: "error" as const, code, message: safeApplicationError(code, "The application could not be submitted. Please try again.") }; }
         await refresh(); return { kind: "success" as const, message: "Your Teleporter application was submitted." };
       } catch { return { kind: "error" as const, code: null, message: "The application could not be submitted. Please try again." }; } finally { submitting = false; }
     },

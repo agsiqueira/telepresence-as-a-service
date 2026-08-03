@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { OperatorApplicationStatus, OperatorPilotStatus, Prisma, Role } from "@prisma/client";
+import { AccountStatus, OperatorApplicationStatus, OperatorPilotStatus, Prisma, Role } from "@prisma/client";
 
 const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "scripts/tsconfig.phase3-db.json"], { stdio: "inherit" });
 if (compile.status !== 0) process.exit(compile.status ?? 1);
@@ -66,11 +66,11 @@ assert.deepEqual(validateOperatorApplicationReview({ decision: "REJECTED", revie
 function baseState() {
   return {
     users: {
-      admin: { id: "admin", role: Role.ADMIN, name: "Admin", online: false, pendingOfferTripId: null, activeTripId: null },
-      admin2: { id: "admin2", role: Role.ADMIN, name: "Second Admin", online: false, pendingOfferTripId: null, activeTripId: null },
-      viewer: { id: "viewer", role: Role.VIEWER, name: "Viewer", online: false, pendingOfferTripId: null, activeTripId: null },
-      other: { id: "other", role: Role.VIEWER, name: "Other Viewer", online: false, pendingOfferTripId: null, activeTripId: null },
-      operator: { id: "operator", role: Role.OPERATOR, name: "Operator", online: false, pendingOfferTripId: null, activeTripId: null },
+      admin: { id: "admin", role: Role.ADMIN, accountStatus: AccountStatus.ACTIVE, name: "Admin", online: false, pendingOfferTripId: null, activeTripId: null },
+      admin2: { id: "admin2", role: Role.ADMIN, accountStatus: AccountStatus.ACTIVE, name: "Second Admin", online: false, pendingOfferTripId: null, activeTripId: null },
+      viewer: { id: "viewer", role: Role.VIEWER, accountStatus: AccountStatus.ACTIVE, name: "Viewer", online: false, pendingOfferTripId: null, activeTripId: null },
+      other: { id: "other", role: Role.VIEWER, accountStatus: AccountStatus.ACTIVE, name: "Other Viewer", online: false, pendingOfferTripId: null, activeTripId: null },
+      operator: { id: "operator", role: Role.OPERATOR, accountStatus: AccountStatus.ACTIVE, name: "Operator", online: false, pendingOfferTripId: null, activeTripId: null },
     },
     applications: [], profiles: {}, destinations: [], trips: [], audits: [], nextApplication: 1, nextAudit: 1,
   };
@@ -171,13 +171,18 @@ async function submit(mock, userId = "viewer", body = validBody()) { return subm
 
 let mock = mockDatabase();
 let result = await submit(mock);
+let state;
 assert.equal(result.ok, true);
 assert.deepEqual({ qualifications: result.value.qualifications, relevantExperience: result.value.relevantExperience, availability: result.value.availability, supportingUrl: result.value.supportingUrl, additionalNote: result.value.additionalNote }, {
   qualifications: "Qualified community volunteer", relevantExperience: "Five years of visitor support", availability: "Weekday afternoons", supportingUrl: "https://example.com/support", additionalNote: "Happy to complete training",
 });
 assert.deepEqual(result.value.languages, ["English", "Spanish"]);
 await expectFailure(submit(mock), "PENDING_APPLICATION_EXISTS");
-await expectFailure(submit(mockDatabase(), "operator"), "FORBIDDEN");
+state = baseState(); state.profiles.operator = { pilotStatus: OperatorPilotStatus.APPROVED };
+await expectFailure(submit(mockDatabase(state), "operator"), "TELEPORTER_APPLICATION_APPROVED");
+await expectFailure(submit(mockDatabase(), "admin"), "FORBIDDEN");
+state = baseState(); state.users.viewer.accountStatus = AccountStatus.DEACTIVATED;
+await expectFailure(submit(mockDatabase(state)), "FORBIDDEN");
 
 mock = mockDatabase(baseState(), { forceUniqueViolation: true });
 await expectFailure(submit(mock), "PENDING_APPLICATION_EXISTS");
@@ -188,7 +193,11 @@ for (const terminal of [OperatorApplicationStatus.REJECTED, OperatorApplicationS
   mock = mockDatabase(state); assert.equal((await submit(mock)).ok, true, `resubmission after ${terminal}`);
 }
 
-let state = baseState();
+state = baseState();
+state.applications.push({ id: "old-approved", applicantId: "viewer", status: OperatorApplicationStatus.APPROVED, submittedAt: new Date(0), reviewedAt: new Date(), withdrawnAt: null });
+await expectFailure(submit(mockDatabase(state)), "TELEPORTER_APPLICATION_APPROVED");
+
+state = baseState();
 state.applications.push(
   { id: "older", applicantId: "viewer", status: OperatorApplicationStatus.REJECTED, submittedAt: new Date("2026-01-01"), reviewedById: "admin" },
   { id: "newer", applicantId: "viewer", status: OperatorApplicationStatus.WITHDRAWN, submittedAt: new Date("2026-02-01"), reviewedById: null },

@@ -1,7 +1,9 @@
 import "server-only";
 
 import {
+  AccountStatus,
   OperatorApplicationStatus,
+  OperatorPilotStatus,
   Prisma,
   Role,
   type PrismaClient,
@@ -22,6 +24,7 @@ export type OperatorApplicationFailureCode =
   | "FORBIDDEN"
   | "VALIDATION_FAILED"
   | "PENDING_APPLICATION_EXISTS"
+  | "TELEPORTER_APPLICATION_APPROVED"
   | "APPLICATION_NOT_FOUND"
   | "APPLICATION_NOT_OWNED"
   | "APPLICATION_NOT_PENDING"
@@ -161,6 +164,14 @@ async function requireRole(tx: Prisma.TransactionClient, userId: string | null |
   return user;
 }
 
+async function requireApplicant(tx: Prisma.TransactionClient, userId: string | null | undefined) {
+  if (!userId) abort("UNAUTHENTICATED", 401, "Authentication is required");
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, role: true, accountStatus: true, operatorProfile: { select: { pilotStatus: true } } } });
+  if (!user) abort("UNAUTHENTICATED", 401, "Authentication is no longer valid");
+  if (user.accountStatus !== AccountStatus.ACTIVE || user.role === Role.ADMIN) abort("FORBIDDEN", 403, "Explorer capability is required");
+  return user;
+}
+
 export async function submitOperatorApplication(
   db: Database,
   applicantId: string | null | undefined,
@@ -169,7 +180,10 @@ export async function submitOperatorApplication(
   const input = validateOperatorApplicationSubmission(body);
   if (!input.ok) return input;
   return runSerializable(db, "submit", { userId: applicantId }, async tx => {
-    const applicant = await requireRole(tx, applicantId, Role.VIEWER);
+    const applicant = await requireApplicant(tx, applicantId);
+    if (applicant.operatorProfile?.pilotStatus === OperatorPilotStatus.APPROVED || await tx.operatorApplication.count({ where: { applicantId: applicant.id, status: OperatorApplicationStatus.APPROVED } })) {
+      abort("TELEPORTER_APPLICATION_APPROVED", 409, "A Teleporter application has already been approved for this account");
+    }
     if (await tx.operatorApplication.count({ where: { applicantId: applicant.id, status: OperatorApplicationStatus.PENDING } })) {
       abort("PENDING_APPLICATION_EXISTS", 409, "A pending Operator application already exists");
     }
@@ -189,7 +203,7 @@ export async function withdrawOperatorApplication(
   now = new Date()
 ) {
   return runSerializable(db, "withdraw", { userId: applicantId, applicationId }, async tx => {
-    const applicant = await requireRole(tx, applicantId, Role.VIEWER);
+    const applicant = await requireApplicant(tx, applicantId);
     const application = await tx.operatorApplication.findUnique({ where: { id: applicationId }, select: { id: true, applicantId: true, status: true } });
     if (!application) abort("APPLICATION_NOT_FOUND", 404, "Operator application not found");
     if (application.applicantId !== applicant.id) abort("APPLICATION_NOT_OWNED", 403, "Operator application belongs to another Viewer");
@@ -222,9 +236,9 @@ const viewerApplicationSelect = {
 export async function listViewerOperatorApplications(db: QueryDatabase, applicantId: string | null | undefined) {
   try {
     if (!applicantId) return failure("UNAUTHENTICATED", 401, "Authentication is required");
-    const applicant = await db.user.findUnique({ where: { id: applicantId }, select: { role: true } });
+    const applicant = await db.user.findUnique({ where: { id: applicantId }, select: { role: true, accountStatus: true } });
     if (!applicant) return failure("UNAUTHENTICATED", 401, "Authentication is no longer valid");
-    if (applicant.role !== Role.VIEWER) return failure("FORBIDDEN", 403, "Viewer authorization is required");
+    if (applicant.accountStatus !== AccountStatus.ACTIVE || applicant.role === Role.ADMIN) return failure("FORBIDDEN", 403, "Explorer capability is required");
     const applications = await db.operatorApplication.findMany({ where: { applicantId }, orderBy: [{ submittedAt: "desc" }, { id: "desc" }], select: viewerApplicationSelect });
     return { ok: true as const, value: applications };
   } catch (error) {
