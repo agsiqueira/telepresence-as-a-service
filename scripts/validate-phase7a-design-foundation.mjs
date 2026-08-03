@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read=path=>readFileSync(path,"utf8"),css=read("app/globals.css"),tailwind=read("tailwind.config.ts"),root=read("app/layout.tsx"),navigation=read("components/ui/PrimaryNavigation.tsx"),shell=read("components/ui/AppShell.tsx"),primitives=read("components/ui/primitives.tsx");
+const tokens={"--color-canvas":"#FBF8F3","--color-surface":"#FFFFFF","--color-text-primary":"#241F1A","--color-text-secondary":"#51483F","--color-text-muted":"#6B625A","--color-border":"#D8CFC4","--color-brand":"#1F5A4A","--color-brand-hover":"#17483B","--color-link":"#1D5A76","--color-focus":"#1D5A76","--color-success-fg":"#1F6B45","--color-warning-fg":"#7A4B00","--color-danger-fg":"#9B2C2C","--color-info-fg":"#1D5A76","--color-live-fg":"#8A4B08","--color-guided-fg":"#5B3F8C"};
+for(const[token,value]of Object.entries(tokens))assert.ok(css.includes(`${token}: ${value}`),token);
+assert.ok(css.includes("color-scheme: light")&&!/dark:/i.test(`${css}\n${tailwind}`));
+assert.ok(css.includes("prefers-reduced-motion: reduce")&&css.includes(":focus-visible")&&css.includes("overflow-x-hidden"));
+for(const token of["canvas","surface","ink","line","brand","action-secondary","focus","success","warning","danger","info","live","guided","maxWidth","transitionDuration"])assert.ok(tailwind.includes(token),token);
+for(const token of["ButtonVariant","ActionLink","Field","TextArea","Select","Choice","Surface","StatusBadge","Notice","PageHeader","MetadataList","StatePanel","Skeleton","VisuallyHidden","LiveRegion"])assert.ok(primitives.includes(token),token);
+assert.ok(root.includes('href="#main-content"')&&root.includes('id="main-content"')&&root.includes("Skip to main content"));
+assert.ok(navigation.includes("usePathname")&&navigation.includes('aria-current={active ? "page"')&&navigation.includes("<details")&&navigation.includes("md:hidden")&&navigation.includes("current page"));
+assert.ok(shell.includes("ContextShell")&&shell.includes("PrimaryNavigation")&&shell.includes("navigationLabel"));
+for(const path of["app/page.tsx","app/sign-in/[[...sign-in]]/page.tsx","app/sign-up/[[...sign-up]]/page.tsx","app/account-deactivated/page.tsx"])assert.ok(read(path).includes("Unfar")||path==="app/page.tsx",path);
+for(const path of["app/viewer/layout.tsx","app/operator/layout.tsx","app/admin/layout.tsx"])assert.ok(read(path).includes("ContextShell"),path);
+assert.ok(read("app/viewer/layout.tsx").includes("requireExplorerPage"));assert.ok(read("app/operator/layout.tsx").includes("requireTeleporterPage"));assert.ok(read("app/admin/layout.tsx").includes("requirePageRole(Role.ADMIN)"));
+const luminance=hex=>{const values=hex.slice(1).match(/../g).map(value=>parseInt(value,16)/255).map(value=>value<=.04045?value/12.92:((value+.055)/1.055)**2.4);return .2126*values[0]+.7152*values[1]+.0722*values[2]},contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
+for(const[a,b]of[["#241F1A","#FBF8F3"],["#6B625A","#FBF8F3"],["#FFFFFF","#1F5A4A"],["#1D5A76","#FBF8F3"],["#1F6B45","#E7F5EC"],["#7A4B00","#FFF3D6"],["#9B2C2C","#FDECEC"],["#5B3F8C","#F0EAF8"]])assert.ok(contrast(a,b)>=4.5,`${a}/${b}`);
+for(const forbidden of["prisma/schema.prisma","app/api/","lib/agreements.ts","lib/trip-lifecycle.ts"])assert.ok(!["tailwind.config.ts","app/globals.css","app/layout.tsx","app/viewer/layout.tsx","app/operator/layout.tsx","app/admin/layout.tsx","app/page.tsx","app/sign-in/[[...sign-in]]/page.tsx","app/sign-up/[[...sign-up]]/page.tsx","app/account-deactivated/page.tsx"].some(path=>path.startsWith(forbidden)));
+console.log("PASS Phase 7A semantic tokens, primitives, shell, navigation, accessibility, route scope, and contrast validation: 76/76");

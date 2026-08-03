@@ -1,0 +1,14 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+export type NavigationItem = { label: string; href: string; exact?: boolean };
+const current = (pathname: string, item: NavigationItem) => item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
+function NavigationLinks({ items, onNavigate }: { items: NavigationItem[]; onNavigate?: () => void }) {
+  const pathname = usePathname();
+  return <ul className="flex flex-col gap-1 md:flex-row md:flex-wrap">{items.map(item => { const active = current(pathname, item); return <li key={item.href}><Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={`inline-flex min-h-control w-full items-center rounded-md px-3 py-2 text-label transition-colors duration-fast md:w-auto ${active ? "bg-brand-subtle text-brand underline decoration-2 underline-offset-4" : "text-ink-secondary hover:bg-surface-subtle hover:text-ink"}`}>{item.label}{active && <span className="sr-only">, current page</span>}</Link></li>; })}</ul>;
+}
+export default function PrimaryNavigation({ label, items }: { label: string; items: NavigationItem[] }) {
+  return <nav aria-label={label}><div className="hidden md:block"><NavigationLinks items={items} /></div><details className="group relative md:hidden"><summary className="inline-flex min-h-control cursor-pointer list-none items-center rounded-md border border-line-strong bg-surface px-3 text-label text-ink marker:content-none">Menu <span aria-hidden="true" className="ml-2 group-open:rotate-180">⌄</span></summary><div className="absolute right-0 z-dropdown mt-2 min-w-64 rounded-lg border border-line bg-surface p-2 shadow-md"><NavigationLinks items={items} /></div></details></nav>;
+}

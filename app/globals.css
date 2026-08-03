@@ -2,6 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-white text-gray-900;
+@layer base {
+  :root {
+    color-scheme: light;
+    --color-canvas: #FBF8F3;
+    --color-surface: #FFFFFF;
+    --color-surface-subtle: #F5EFE6;
+    --color-surface-raised: #FFFCF8;
+    --color-text-primary: #241F1A;
+    --color-text-secondary: #51483F;
+    --color-text-muted: #6B625A;
+    --color-border: #D8CFC4;
+    --color-border-strong: #9E9184;
+    --color-brand: #1F5A4A;
+    --color-brand-hover: #17483B;
+    --color-brand-subtle: #E3F0EA;
+    --color-accent: #A5482D;
+    --color-action-secondary: #EFE7DD;
+    --color-link: #1D5A76;
+    --color-focus: #1D5A76;
+    --color-success-fg: #1F6B45;
+    --color-success-bg: #E7F5EC;
+    --color-warning-fg: #7A4B00;
+    --color-warning-bg: #FFF3D6;
+    --color-danger-fg: #9B2C2C;
+    --color-danger-bg: #FDECEC;
+    --color-info-fg: #1D5A76;
+    --color-info-bg: #E7F3F8;
+    --color-live-fg: #8A4B08;
+    --color-live-bg: #FFF1DB;
+    --color-guided-fg: #5B3F8C;
+    --color-guided-bg: #F0EAF8;
+    --color-scrim: rgb(36 31 26 / 0.64);
+    --motion-fast: 120ms;
+    --motion-standard: 180ms;
+    --motion-slow: 220ms;
+    --motion-easing: cubic-bezier(.2,.8,.2,1);
+  }
+
+  html { @apply min-w-0 bg-canvas font-sans text-ink antialiased; }
+  body { @apply min-w-0 overflow-x-hidden bg-canvas text-body text-ink; }
+  h1, h2, h3 { @apply text-balance text-ink; }
+  p, li, dd, dt, label, button, a { overflow-wrap: anywhere; }
+  a { @apply rounded-sm; }
+  a:not([class]) { @apply text-link underline decoration-1 underline-offset-4; }
+  ::selection { @apply bg-brand-subtle text-ink; }
+  :focus-visible { @apply outline-none ring-2 ring-focus ring-offset-2 ring-offset-surface; }
+  :disabled, [aria-disabled="true"] { cursor: not-allowed; }
+}
+
+@layer components {
+  .unfar-skip-link {
+    @apply fixed left-4 top-2 z-critical -translate-y-20 whitespace-nowrap rounded-md bg-brand px-4 py-3 font-semibold text-white shadow-md transition-transform duration-fast ease-standard focus:translate-y-0;
+  }
+  .unfar-control {
+    @apply min-h-control w-full rounded-md border border-line bg-surface px-3 py-2 text-ink shadow-sm transition-colors duration-fast ease-standard placeholder:text-ink-muted hover:border-line-strong focus-visible:border-focus disabled:bg-surface-subtle disabled:text-ink-muted;
+  }
+  .unfar-page-canvas { @apply min-h-[calc(100dvh-4rem)] bg-canvas; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -2,6 +2,7 @@ import { SignOutButton } from "@clerk/nextjs";
 import { AccountStatus, Role } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/current-user";
+import { buttonClassName, Notice, PageHeader, Surface } from "@/components/ui/primitives";
 
 export default async function AccountDeactivatedPage() {
   const user = await getCurrentUser();
@@ -10,5 +11,5 @@ export default async function AccountDeactivatedPage() {
     if (user.role === Role.ADMIN) redirect("/admin/participants");
     redirect("/viewer");
   }
-  return <section className="mx-auto max-w-xl px-4 py-16 text-center"><h1 className="text-3xl font-bold text-gray-950">Account access deactivated</h1><p className="mt-4 text-gray-700">Your VirtualTrip application access has been deactivated. Your sign-in identity has not been deleted or disabled.</p><p className="mt-3 text-gray-700">Contact an administrator if you believe access should be restored.</p><SignOutButton redirectUrl="/"><button className="mt-8 min-h-11 rounded-lg bg-gray-950 px-5 text-white focus-visible:ring-2 focus-visible:ring-offset-2">Sign out</button></SignOutButton></section>;
+  return <section className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-participant place-items-center px-4 py-12 sm:px-6"><Surface className="w-full max-w-xl"><PageHeader eyebrow="Account access" title="Account access deactivated" description="Your Unfar application access has been deactivated. Your sign-in identity has not been deleted or disabled."/><Notice variant="warning" className="mt-6">Contact an administrator if you believe access should be restored.</Notice><SignOutButton redirectUrl="/"><button className={buttonClassName("secondary","mt-8")}>Sign out</button></SignOutButton></Surface></section>;
 }
