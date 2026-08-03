@@ -80,6 +80,7 @@
     "test:phase6:foundation": "node scripts/validate-phase6-foundation.mjs",
     "test:phase6:foundation:db": "node scripts/run-phase6-foundation-db-tests.mjs",
     "test:phase6a": "node scripts/validate-phase6a-live-moments.mjs",
+    "test:live-moment-datetime": "node scripts/validate-live-moment-datetime-local.mjs",
     "test:phase6a:db": "node scripts/run-phase6a-db-tests.mjs",
     "test:phase6b": "node scripts/validate-phase6b-guided-experiences.mjs",
     "test:phase6b:db": "node scripts/run-phase6b-db-tests.mjs",

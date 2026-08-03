@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import DiscoveryCard from "@/components/explorer/DiscoveryCard";
 import { ActionLink, Button, LiveRegion, MetadataList, Notice, Skeleton, StatePanel, Surface } from "@/components/ui/primitives";
+import { liveMomentStartBounds } from "@/lib/datetime-local";
 
 type Moment = { id: string; publicPlaceName: string; coarseLocation: string; durationMinutes: number; liveMoment: { availabilityStart: string; availabilityEnd: string; expiresAt: string } };
 type Claim = { id: string; startAt: string; endAt: string; expiresAt: string; journeyRequestId: string; proposalId: string; listing: { publicPlaceName: string } };
@@ -43,12 +44,24 @@ export default function LiveMomentDiscovery({ restricted = false }: { restricted
     return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [load]);
 
+  useEffect(() => {
+    setStarts(current => Object.fromEntries(Object.entries(current).filter(([id, value]) => {
+      const item = items.find(candidate => candidate.id === id);
+      if (!item) return false;
+      const bounds = liveMomentStartBounds(item.liveMoment.availabilityStart, item.liveMoment.availabilityEnd, item.durationMinutes);
+      const selected = new Date(value);
+      return Boolean(bounds && Number.isFinite(selected.getTime()) && selected >= bounds.start && selected <= bounds.latestStart);
+    })));
+  }, [items]);
+
   function announce(value: string) {
     setMessage(value);
     requestAnimationFrame(() => status.current?.focus());
   }
 
   async function claim(item: Moment) {
+    const bounds = liveMomentStartBounds(item.liveMoment.availabilityStart, item.liveMoment.availabilityEnd, item.durationMinutes);
+    if (!bounds) { announce(`No valid start fits within the window for ${item.publicPlaceName}.`); return; }
     const start = starts[item.id];
     if (!start) { announce(`Choose a start time for ${item.publicPlaceName} first.`); return; }
     setBusyId(item.id);
@@ -83,7 +96,7 @@ export default function LiveMomentDiscovery({ restricted = false }: { restricted
       {state === "loading" && <div className="mt-5 grid gap-4 lg:grid-cols-2" aria-busy="true"><Surface><Skeleton className="w-28"/><Skeleton className="mt-4 w-3/4"/><Skeleton className="mt-3 w-full"/></Surface><Surface><Skeleton className="w-24"/><Skeleton className="mt-4 w-2/3"/><Skeleton className="mt-3 w-full"/></Surface><span className="sr-only" role="status">Loading Live Moments…</span></div>}
       {state === "failed" && <StatePanel title="Live Moments are temporarily unavailable" tone="danger" action={<Button variant="secondary" onClick={() => void load()}>Retry Live Moments</Button>}><p>Other discovery options remain available.</p></StatePanel>}
       {(state === "ready" || state === "refreshing") && items.length === 0 && <StatePanel title="No Live Moments available"><p>Check Guided Experiences and destinations, or return later.</p></StatePanel>}
-      {(state === "ready" || state === "refreshing") && items.length > 0 && <div className="mt-5 grid gap-4 lg:grid-cols-2" aria-busy={state === "refreshing" || undefined}>{items.map(item => <DiscoveryCard key={item.id} title={item.publicPlaceName} typeLabel="Live Moment" status={restricted ? "Read-only" : busyId === item.id ? "Creating hold" : "Available"} statusTone={restricted ? "warning" : busyId === item.id ? "info" : "success"} metadata={<MetadataList items={[{ term: "Location", detail: item.coarseLocation }, { term: "Available window", detail: `${new Date(item.liveMoment.availabilityStart).toLocaleString()} – ${new Date(item.liveMoment.availabilityEnd).toLocaleString()}` }, { term: "Duration", detail: `${item.durationMinutes} minutes` }]} />} action={<div><label className="text-label" htmlFor={`live-start-${item.id}`}>Start time</label><input id={`live-start-${item.id}`} type="datetime-local" min={item.liveMoment.availabilityStart.slice(0,16)} max={item.liveMoment.availabilityEnd.slice(0,16)} value={starts[item.id] ?? ""} onChange={event => setStarts(current => ({ ...current, [item.id]: event.target.value }))} className="unfar-control mt-2" aria-describedby={`window-${item.id}`} disabled={restricted}/><p id={`window-${item.id}`} className="mt-2 text-body-sm text-ink-muted">The full {item.durationMinutes}-minute Journey must fit inside this window.</p><Button disabled={busyId !== null || restricted} onClick={() => void claim(item)} className="mt-4 w-full" aria-label={`Hold Live Moment at ${item.publicPlaceName}`}>{busyId === item.id ? "Creating hold…" : "Hold and review"}</Button></div>} />)}</div>}
+      {(state === "ready" || state === "refreshing") && items.length > 0 && <div className="mt-5 grid gap-4 lg:grid-cols-2" aria-busy={state === "refreshing" || undefined}>{items.map(item => { const bounds = liveMomentStartBounds(item.liveMoment.availabilityStart, item.liveMoment.availabilityEnd, item.durationMinutes), unavailable = !bounds; return <DiscoveryCard key={item.id} title={item.publicPlaceName} typeLabel="Live Moment" status={restricted ? "Read-only" : unavailable ? "No valid start" : busyId === item.id ? "Creating hold" : "Available"} statusTone={restricted || unavailable ? "warning" : busyId === item.id ? "info" : "success"} metadata={<MetadataList items={[{ term: "Location", detail: item.coarseLocation }, { term: "Available window", detail: `${new Date(item.liveMoment.availabilityStart).toLocaleString()} – ${new Date(item.liveMoment.availabilityEnd).toLocaleString()}` }, { term: "Duration", detail: `${item.durationMinutes} minutes` }]} />} action={<div><label className="text-label" htmlFor={`live-start-${item.id}`}>Start time</label><input id={`live-start-${item.id}`} type="datetime-local" {...(bounds ? { min: bounds.min, max: bounds.max } : {})} value={starts[item.id] ?? ""} onChange={event => setStarts(current => ({ ...current, [item.id]: event.target.value }))} className="unfar-control mt-2" aria-describedby={`window-${item.id}`} disabled={restricted || unavailable}/><p id={`window-${item.id}`} className="mt-2 text-body-sm text-ink-muted">{unavailable ? "No valid start fits within this availability window." : `The full ${item.durationMinutes}-minute Journey must fit inside this window.`}</p><Button disabled={busyId !== null || restricted || unavailable} onClick={() => void claim(item)} className="mt-4 w-full" aria-label={`Hold Live Moment at ${item.publicPlaceName}`}>{busyId === item.id ? "Creating hold…" : "Hold and review"}</Button></div>} />; })}</div>}
     </section>
   );
 }
