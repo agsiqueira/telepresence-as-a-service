@@ -30,7 +30,7 @@ assert.match(journeys, /SafetyReportDialog/);
 assert.match(read("components/JourneyReviewPanel.tsx"), /SimulatedTipPanel/);
 assert.match(journeys, /expandedId === item\.id/);
 assert.match(journeys, /aria-expanded=\{expanded\}/);
-assert.match(journeys, /expanded && <div id=\{panelId\}/);
+assert.match(journeys, /expanded\s*&&\s*<div id=\{panelId\}/);
 
 const status = execFileSync("git", ["-c", `safe.directory=${process.cwd().replaceAll("\\", "/")}`, "status", "--porcelain"], { encoding: "utf8" });
 const changed = status.split(/\r?\n/).filter(Boolean).map(line => line.slice(3).replaceAll("\\", "/")).filter(path => path !== "reference-materials/");

@@ -43,6 +43,6 @@ assert.doesNotMatch(route, /userId|performedRole.*searchParams/);
 assert.doesNotMatch(panel, /presence|mediaQuality|moodBefore|moodAfter|Feedback/);
 assert.match(feedback, /How was your Journey/);
 for (const source of [explorerJourneys, operator]) assert.match(source, /trips\/history[^"\n]*limit=50/);
-assert.match(explorerJourneys, />Journey history</);
+assert.match(explorerJourneys, /Journey history|Recent Journeys/);
 assert.match(operator, />Offer and visit history</);
 console.log("Phase 5D.2 bilateral-review UI validation passed: 60/60");

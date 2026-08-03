@@ -15,12 +15,13 @@ const reviews = read("lib/journey-reviews.ts");
 
 assert.match(historyRoute, /listViewerHistory\(db, user\.id/);
 assert.match(lifecycle, /listViewerHistory[\s\S]*where: \{ viewerId \}/);
-assert.match(journeys, /item\.status === "ENDED"/);
-assert.match(journeys, /Private Feedback is internal research Feedback/);
+assert.match(journeys, /item\.status\s*===\s*"ENDED"/);
+assert.match(journeys, /Feedback is internal research Feedback/);
 assert.match(journeys, /<FeedbackForm embedded tripId=\{item\.id\}/);
 assert.match(journeys, /void loadHistory\(\)/);
 assert.match(journeys, /followUpEligible\(item\.status\)/);
-assert.match(journeys, /not shared with the Teleporter or used in Journey Reviews/);
+assert.match(journeys, /separate from the immutable Journey Review/);
+assert.match(journeys, /not shared with the Teleporter/);
 assert.doesNotMatch(operator, /FeedbackForm|private feedback|presence|mediaQuality/i);
 assert.match(lifecycle, /status: item\.trip\.status === TripStatus\.FEEDBACK_COMPLETED \? TripStatus\.ENDED/);
 assert.doesNotMatch(lifecycle.match(/export async function listOperatorHistory[\s\S]*?\n\}/)?.[0] ?? "", /feedbackCompletedAt|feedbackSkippedAt/);
@@ -36,4 +37,4 @@ assert.match(currentRoute, /const ACTIVE = \[TripStatus\.REQUESTED, TripStatus\.
 assert.doesNotMatch(reviews, /FeedbackForm|presence|mediaQuality/);
 assert.doesNotMatch(viewer, /\bTip\b|payment|notification|moderation/);
 assert.doesNotMatch(feedback, /SafetyReport/);
-console.log("Private Feedback reload remediation validation passed: 23/23");
+console.log("Private Feedback reload remediation validation passed: 24/24");

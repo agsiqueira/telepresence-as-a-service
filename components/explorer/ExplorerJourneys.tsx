@@ -1,99 +1,52 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import AccountSafetyRestrictionNotice from "@/components/AccountSafetyRestrictionNotice";
 import FeedbackForm from "@/components/FeedbackForm";
 import JourneyReviewPanel from "@/components/JourneyReviewPanel";
 import SafetyReportDialog from "@/components/SafetyReportDialog";
-import { Button, LiveRegion, MetadataList, Notice, PageHeader, Skeleton, StatePanel, StatusBadge, Surface } from "@/components/ui/primitives";
+import { ActionLink, Button, LiveRegion, MetadataList, Notice, PageHeader, Skeleton, StatePanel, StatusBadge, Surface } from "@/components/ui/primitives";
 import { requireJsonResponse } from "@/lib/resilient-poller";
 
-type JourneyStatus = "REQUESTED" | "OFFERED" | "ACCEPTED" | "IN_PROGRESS" | "ENDED" | "FEEDBACK_COMPLETED" | "CANCELLED" | "NO_OPERATOR_AVAILABLE";
-type CurrentJourney = { id: string; destination: string; status: JourneyStatus; acceptedAt: string | null; hasOffer?: boolean };
-type HistoryJourney = CurrentJourney & { requestedDuration: number | null; requestedAt: string };
-type LoadState = "loading" | "ready" | "failed";
+type JourneyStatus="REQUESTED"|"OFFERED"|"ACCEPTED"|"IN_PROGRESS"|"ENDED"|"FEEDBACK_COMPLETED"|"CANCELLED"|"NO_OPERATOR_AVAILABLE";
+type CurrentJourney={id:string;destination:string;status:JourneyStatus;acceptedAt:string|null;hasOffer?:boolean};
+type HistoryJourney=CurrentJourney&{requestedDuration:number|null;requestedAt:string;startedAt?:string|null;endedAt?:string|null;cancelledAt?:string|null;noOperatorAvailableAt?:string|null;feedbackCompletedAt?:string|null;feedbackSkippedAt?:string|null};
+type LoadState="loading"|"refreshing"|"ready"|"failed";
 
-const statusLabel = (status: JourneyStatus) => ({
-  REQUESTED: "Matching",
-  OFFERED: "Teleporter reviewing",
-  ACCEPTED: "Accepted",
-  IN_PROGRESS: "Portal active",
-  ENDED: "Follow-up available",
-  FEEDBACK_COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-  NO_OPERATOR_AVAILABLE: "No compatible Teleporter",
-})[status];
+const statusLabel=(status:JourneyStatus)=>({REQUESTED:"Matching",OFFERED:"Teleporter reviewing",ACCEPTED:"Scheduled or accepted",IN_PROGRESS:"Portal active",ENDED:"Feedback required",FEEDBACK_COMPLETED:"Feedback completed",CANCELLED:"Cancelled",NO_OPERATOR_AVAILABLE:"No compatible Teleporter"})[status];
+const statusTone=(status:JourneyStatus)=>status==="IN_PROGRESS"?"live":status==="FEEDBACK_COMPLETED"?"success":status==="CANCELLED"||status==="NO_OPERATOR_AVAILABLE"?"warning":status==="ENDED"?"info":"neutral";
+const followUpEligible=(status:JourneyStatus)=>status==="ENDED"||status==="FEEDBACK_COMPLETED";
+const safetyEligible=(status:JourneyStatus)=>["ENDED","FEEDBACK_COMPLETED","CANCELLED"].includes(status);
+const terminal=(status:JourneyStatus)=>["ENDED","FEEDBACK_COMPLETED","CANCELLED","NO_OPERATOR_AVAILABLE"].includes(status);
+const eventTime=(item:HistoryJourney)=>item.feedbackCompletedAt??item.endedAt??item.cancelledAt??item.noOperatorAvailableAt??item.requestedAt;
 
-const statusTone = (status: JourneyStatus) => status === "IN_PROGRESS" ? "live" : status === "ACCEPTED" || status === "FEEDBACK_COMPLETED" ? "success" : status === "CANCELLED" || status === "NO_OPERATOR_AVAILABLE" ? "warning" : status === "ENDED" ? "info" : "neutral";
-const followUpEligible = (status: JourneyStatus) => status === "ENDED" || status === "FEEDBACK_COMPLETED";
-const safetyEligible = (status: JourneyStatus) => ["ACCEPTED", "IN_PROGRESS", "ENDED", "FEEDBACK_COMPLETED", "CANCELLED"].includes(status);
+export default function ExplorerJourneys(){
+  const[current,setCurrent]=useState<CurrentJourney|null>(null),[currentState,setCurrentState]=useState<LoadState>("loading");
+  const[history,setHistory]=useState<HistoryJourney[]>([]),[historyState,setHistoryState]=useState<LoadState>("loading");
+  const[expandedId,setExpandedId]=useState<string|null>(null),[announcement,setAnnouncement]=useState("");
+  const disclosureRefs=useRef<Record<string,HTMLButtonElement|null>>({});
 
-export default function ExplorerJourneys() {
-  const [current, setCurrent] = useState<CurrentJourney | null>(null);
-  const [currentState, setCurrentState] = useState<LoadState>("loading");
-  const [history, setHistory] = useState<HistoryJourney[]>([]);
-  const [historyState, setHistoryState] = useState<LoadState>("loading");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [announcement, setAnnouncement] = useState("");
+  const loadCurrent=useCallback(async()=>{setCurrentState("loading");try{const data=await requireJsonResponse<{trip:CurrentJourney|null}>(await fetch("/api/trips/current",{cache:"no-store"}));setCurrent(data.trip);setCurrentState("ready")}catch{setCurrentState("failed")}},[]);
+  const loadHistory=useCallback(async(background=false)=>{setHistoryState(current=>background&&current==="ready"?"refreshing":"loading");try{const data=await requireJsonResponse<{history:HistoryJourney[]}>(await fetch("/api/trips/history?limit=50",{cache:"no-store"}));setHistory(data.history??[]);setHistoryState("ready")}catch{setHistoryState("failed")}},[]);
+  useEffect(()=>{void loadCurrent();void loadHistory()},[loadCurrent,loadHistory]);
 
-  const loadCurrent = useCallback(async () => {
-    setCurrentState("loading");
-    try {
-      const data = await requireJsonResponse<{ trip: CurrentJourney | null }>(await fetch("/api/trips/current", { cache: "no-store" }));
-      setCurrent(data.trip);
-      setCurrentState("ready");
-    } catch {
-      setCurrentState("failed");
-    }
-  }, []);
+  function toggleJourney(id:string){setExpandedId(value=>{const next=value===id?null:id;setAnnouncement(next?"Journey details opened.":"Journey details closed.");return next});requestAnimationFrame(()=>disclosureRefs.current[id]?.focus())}
+  function feedbackDone(id:string){setAnnouncement("Private Journey Feedback completed. Journey status refreshed.");setExpandedId(null);void loadHistory(true);requestAnimationFrame(()=>disclosureRefs.current[id]?.focus())}
 
-  const loadHistory = useCallback(async () => {
-    setHistoryState("loading");
-    try {
-      const data = await requireJsonResponse<{ history: HistoryJourney[] }>(await fetch("/api/trips/history?limit=50", { cache: "no-store" }));
-      setHistory(data.history ?? []);
-      setHistoryState("ready");
-    } catch {
-      setHistoryState("failed");
-    }
-  }, []);
+  const terminalHistory=history.filter(item=>terminal(item.status));
+  const followUp=terminalHistory.filter(item=>item.status==="ENDED");
+  const remaining=terminalHistory.filter(item=>item.status!=="ENDED");
+  const recent=remaining.slice(0,5),earlier=remaining.slice(5);
+  const coordinationOverlap=history.some(item=>!terminal(item.status)&&item.id!==current?.id);
 
-  useEffect(() => { void loadCurrent(); void loadHistory(); }, [loadCurrent, loadHistory]);
+  function records(title:string,items:HistoryJourney[],description:string){if(items.length===0)return null;return <section className="mt-10" aria-labelledby={`${title.replaceAll(" ","-").toLowerCase()}-heading`}><h2 id={`${title.replaceAll(" ","-").toLowerCase()}-heading`} className="text-heading-2">{title}</h2><p className="mt-2 text-body-sm text-ink-secondary">{description}</p><div className="mt-4 grid gap-4">{items.map(item=>{const expanded=expandedId === item.id,panelId=`journey-follow-up-${item.id}`;return <Surface key={item.id} className="min-w-0 break-words"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-heading-3">{item.destination}</h3><StatusBadge variant={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></div><MetadataList className="mt-3" items={[{term:"Journey date",detail:new Date(eventTime(item)).toLocaleString()},{term:"Requested duration",detail:item.requestedDuration?`${item.requestedDuration} minutes`:"Not recorded"}]}/></div><Button ref={element=>{disclosureRefs.current[item.id]=element}} variant="secondary" className="w-full shrink-0 sm:w-auto" aria-expanded={expanded} aria-controls={panelId} onClick={()=>toggleJourney(item.id)}>{expanded?"Hide Journey details":"Review Journey details"}</Button></div>{expanded&&<div id={panelId} className="mt-5 border-t border-line pt-5"><h4 className="text-heading-3">Journey details and follow-up</h4><MetadataList className="mt-4" items={[{term:"Lifecycle status",detail:statusLabel(item.status)},{term:"Requested",detail:new Date(item.requestedAt).toLocaleString()},{term:"Historical record",detail:"This server-authoritative Journey record is read-only."}]}/>{item.status==="ENDED"&&<div className="mt-6"><Notice variant="info" title="Private Feedback is available"><p>Feedback is internal research Feedback. It is separate from the immutable Journey Review and is not shared with the Teleporter.</p></Notice><FeedbackForm embedded tripId={item.id} onDone={()=>feedbackDone(item.id)}/></div>}{item.status==="FEEDBACK_COMPLETED"&&<Notice className="mt-5" variant="success" title="Feedback completed"><p>No additional private Feedback can be submitted for this Journey.</p></Notice>}{safetyEligible(item.status)&&<div className="mt-5"><SafetyReportDialog tripId={item.id}/></div>}{followUpEligible(item.status)&&<div className="mt-5"><JourneyReviewPanel tripId={item.id}/></div>}{!safetyEligible(item.status)&&!followUpEligible(item.status)&&<Notice className="mt-5" variant="info" title="No follow-up actions available"><p>This Journey remains available as an immutable historical record.</p></Notice>}</div>}</Surface>})}</div></section>}
 
-  function toggleJourney(id: string) {
-    setExpandedId(value => {
-      const next = value === id ? null : id;
-      setAnnouncement(next ? "Journey follow-up opened." : "Journey follow-up closed.");
-      return next;
-    });
-  }
-
-  return <main className="mx-auto max-w-participant px-4 py-10 sm:px-6">
-    <PageHeader eyebrow="Explorer" title="Journeys" description="Restore your current Journey and revisit completed Journey follow-up." />
-    <LiveRegion className="sr-only">{announcement}</LiveRegion>
-
-    <section className="mt-8" aria-labelledby="current-journey-heading">
-      <h2 id="current-journey-heading" className="text-heading-2">Current Journey</h2>
-      <div className="mt-4">
-        {currentState === "loading" && <Surface aria-busy="true"><Skeleton className="w-32" /><Skeleton className="mt-3 w-2/3" /><p className="sr-only" role="status">Restoring current Journey…</p></Surface>}
-        {currentState === "failed" && <Notice variant="danger" title="Current Journey could not be restored"><p>Check your connection and try again.</p><Button variant="secondary" className="mt-4" onClick={() => void loadCurrent()}>Retry</Button></Notice>}
-        {currentState === "ready" && !current && <StatePanel title="No active Journey"><p>Your requesting, matching, and active Portal status will appear here.</p></StatePanel>}
-        {currentState === "ready" && current && <Surface><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-label text-ink-muted">Current Journey</p><h3 className="mt-1 text-heading-3">{current.destination}</h3></div><StatusBadge variant={statusTone(current.status)}>{statusLabel(current.status)}</StatusBadge></div><p className="mt-4 text-body-sm text-ink-secondary">Open Discover to continue the current immediate Journey flow or reconnect to its Portal.</p><a href="/viewer" className="mt-4 inline-flex min-h-control items-center text-link underline underline-offset-4">Continue on Discover</a></Surface>}
-      </div>
-    </section>
-
-    <section className="mt-10" aria-labelledby="journey-history-heading">
-      <h2 id="journey-history-heading" className="text-heading-2">Journey history</h2>
-      <p className="mt-2 text-body-sm text-ink-secondary">Open one Journey at a time to access its available Feedback, Review, simulated Tip, and safety actions.</p>
-      <div className="mt-4">
-        {historyState === "loading" && <Surface aria-busy="true"><Skeleton className="w-40" /><Skeleton className="mt-3 w-full" /><Skeleton className="mt-2 w-3/4" /><p className="sr-only" role="status">Loading Journey history…</p></Surface>}
-        {historyState === "failed" && <Notice variant="danger" title="Journey history could not be loaded"><p>Your current Journey status is unaffected.</p><Button variant="secondary" className="mt-4" onClick={() => void loadHistory()}>Retry</Button></Notice>}
-        {historyState === "ready" && history.length === 0 && <StatePanel title="No Journey history"><p>Your completed and previous Journeys will appear here.</p></StatePanel>}
-        {historyState === "ready" && history.length > 0 && <ul className="grid gap-3">{history.map(item => {
-          const expanded = expandedId === item.id;
-          const panelId = `journey-follow-up-${item.id}`;
-          return <li key={item.id}><Surface className="p-0 sm:p-0"><div className="p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-heading-3">{item.destination}</h3><p className="mt-1 text-body-sm text-ink-secondary">Requested {new Date(item.requestedAt).toLocaleString()}</p></div><StatusBadge variant={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></div><MetadataList className="mt-4" items={[{ term: "Duration", detail: item.requestedDuration ? `${item.requestedDuration} minutes` : "Not recorded" }, { term: "Status", detail: statusLabel(item.status) }]} /><Button variant="secondary" className="mt-5 w-full sm:w-auto" aria-expanded={expanded} aria-controls={panelId} onClick={() => toggleJourney(item.id)}>{expanded ? "Close Journey details" : "Open Journey details"}</Button></div>{expanded && <div id={panelId} className="border-t border-line p-4 sm:p-5"><h4 className="text-heading-3">Journey follow-up</h4>{item.status === "ENDED" && <div className="mt-4"><p className="text-body-sm text-ink-secondary">Private Feedback is internal research Feedback. It is not shared with the Teleporter or used in Journey Reviews.</p><FeedbackForm embedded tripId={item.id} onDone={() => { setAnnouncement("Private Journey Feedback completed."); void loadHistory(); }} /></div>}{safetyEligible(item.status) && <div className="mt-4"><SafetyReportDialog tripId={item.id} /></div>}{followUpEligible(item.status) && <JourneyReviewPanel tripId={item.id} />}{!safetyEligible(item.status) && !followUpEligible(item.status) && <p className="mt-3 text-body-sm text-ink-secondary">No follow-up actions are available for this Journey.</p>}</div>}</Surface></li>;
-        })}</ul>}
-      </div>
-    </section>
+  return <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10"><PageHeader title="Journeys" description="Review terminal Journey records and complete currently available Feedback, Review, and safety follow-up."/><div className="mt-6"><AccountSafetyRestrictionNotice/></div><LiveRegion className="sr-only">{announcement}</LiveRegion>
+    <section className="mt-8" aria-labelledby="journey-continuity-heading"><h2 id="journey-continuity-heading" className="text-heading-2">Current Journey continuity</h2><div className="mt-4">{currentState==="loading"&&<Surface aria-busy="true"><Skeleton className="w-32"/><Skeleton className="mt-3 w-2/3"/><span className="sr-only" role="status">Restoring current Journey…</span></Surface>}{currentState==="failed"&&<StatePanel title="Current Journey could not be restored" tone="danger" action={<Button variant="secondary" onClick={()=>void loadCurrent()}>Retry current Journey</Button>}><p>Historical records can still load independently.</p></StatePanel>}{currentState==="ready"&&!current&&<StatePanel title="No immediate Journey in progress"><p>Scheduled coordination remains in Requests. Immediate Journey continuity appears here when available.</p></StatePanel>}{currentState==="ready"&&current&&<Surface><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-label text-ink-muted">Current immediate Journey</p><h3 className="mt-1 text-heading-3">{current.destination}</h3></div><StatusBadge variant={statusTone(current.status)}>{statusLabel(current.status)}</StatusBadge></div><p className="mt-4 text-body-sm text-ink-secondary">Continue the immediate Journey flow or reconnect to its Portal from Discover. Scheduled coordination stays in Requests.</p><div className="mt-4 flex flex-col gap-2 sm:flex-row"><ActionLink href="/viewer" className="w-full sm:w-auto">Continue on Discover</ActionLink><ActionLink href="/viewer/requests" variant="secondary" className="w-full sm:w-auto">Open Requests</ActionLink></div></Surface>}</div></section>
+    {coordinationOverlap&&<Notice className="mt-6" variant="info" title="Scheduled or active coordination remains in Requests"><p>This history projection includes non-terminal records, but their Request, Proposal, Agreement, cancellation, rescheduling, and Portal coordination is not duplicated here.</p><ActionLink href="/viewer/requests" variant="quiet" className="mt-2">Review Journey Requests</ActionLink></Notice>}
+    {historyState==="loading"&&<div className="mt-10 grid gap-4" aria-busy="true"><Surface><Skeleton className="w-2/5"/><Skeleton className="mt-3 w-full"/></Surface><Surface><Skeleton className="w-1/3"/><Skeleton className="mt-3 w-3/4"/></Surface><span className="sr-only" role="status">Loading Journey history…</span></div>}
+    {historyState==="failed"&&<StatePanel title="Journey history could not be loaded" tone="danger" action={<Button variant="secondary" onClick={()=>void loadHistory()}>Retry Journey history</Button>}><p>Current Journey continuity is unaffected.</p></StatePanel>}
+    {historyState==="ready"&&terminalHistory.length===0&&<StatePanel title="No terminal Journey history"><p>Ended, Feedback-completed, cancelled, or unavailable Journeys will appear here.</p></StatePanel>}
+    {(historyState==="ready"||historyState==="refreshing")&&<>{records("Follow-up action required",followUp,"Ended Journeys with private Feedback and Review follow-up currently available.")}{records("Recent Journeys",recent,"Recent terminal Journey records and their currently supported follow-up.")}{records("Earlier Journey history",earlier,"Older immutable terminal Journey records.")}</>}
   </main>;
 }

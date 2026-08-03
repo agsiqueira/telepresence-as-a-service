@@ -20,7 +20,7 @@ assert.match(viewer, /destinationsState/);
 assert.match(viewer, /Destinations are temporarily unavailable/);
 assert.match(viewer, /Current Journey could not be restored/);
 assert.match(journeys, /Journey history could not be loaded/);
-assert.match(journeys, /historyState === "loading"/);
+assert.match(journeys, /historyState\s*===\s*"loading"/);
 assert.doesNotMatch(viewer, /fetch\("\/api\/(destinations|trips\/current|trips\/history)[^\n]*\n\s*\.then\([^\n]*response\.json/);
 
 for (const route of [destinations, current, history]) {
