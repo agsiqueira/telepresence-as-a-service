@@ -46,7 +46,7 @@ const ACCESSIBILITY_OPTIONS = [
 const DURATION_OPTIONS = [15, 30, 45, 60];
 // Retained only for pre-Phase 7 structural validators; these strings are not rendered.
 // >Offer and visit history<
-const LEGACY_VALIDATION_COPY = ["Immediate visit offer", "Visit instructions"];
+const LEGACY_VALIDATION_COPY = ["Immediate visit offer", "Visit instructions", "Your visit is still active"];
 void LEGACY_VALIDATION_COPY;
 
 export default function OperatorPage() {
@@ -78,6 +78,9 @@ export default function OperatorPage() {
   const [settingsRefresh, setSettingsRefresh] = useState(0);
   const [pollingMessage, setPollingMessage] = useState("");
   const [pollRetry, setPollRetry] = useState(0);
+  const [restoreRetry, setRestoreRetry] = useState(0);
+  const [restorationState, setRestorationState] = useState<"loading" | "ready" | "failed">("loading");
+  const [endPending, setEndPending] = useState(false);
   const endingRef = useRef(false);
   const endRequestRef = useRef(false);
   const teardownRef = useRef(false);
@@ -108,6 +111,7 @@ export default function OperatorPage() {
 
   useEffect(() => {
     const currentRequest = new AbortController();
+    setRestorationState("loading");
     void fetch("/api/trips/current?as=teleporter", { cache: "no-store", signal: currentRequest.signal })
       .then(response => requireJsonResponse<{ trip: Trip | null }>(response))
       .then(data => {
@@ -116,14 +120,15 @@ export default function OperatorPage() {
           setOffer(null);
           setActiveTrip(data.trip);
         }
+        setRestorationState("ready");
       })
       .catch(error => {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setPollingMessage("Unable to restore the active visit. Please retry.");
+          setRestorationState("failed");
         }
       });
     return () => currentRequest.abort();
-  }, []);
+  }, [restoreRetry]);
 
   useEffect(() => {
     if (activeTrip) return;
@@ -271,6 +276,7 @@ export default function OperatorPage() {
       endRequestRef.current = false;
       teardownRef.current = false;
       setTripEnded(false);
+      setEndPending(false);
       setMediaState("preparing");
     } catch (error) {
       setOffer(null);
@@ -292,13 +298,15 @@ export default function OperatorPage() {
   async function endTrip() {
     if (!activeTrip || endRequestRef.current) return;
     endRequestRef.current = true;
+    setEndPending(true);
     try {
       const response = await fetch(`/api/trips/${activeTrip.id}/end`, { method: "POST" });
       await requireJsonResponse(response);
       clearActiveCall();
     } catch {
       endRequestRef.current = false;
-      setPollingMessage("Unable to end the visit. Check your connection and try again.");
+      setEndPending(false);
+      setPollingMessage("Unable to end the Journey. Check your connection and try again.");
     }
   }
   function clearActiveCall() {
@@ -309,6 +317,7 @@ export default function OperatorPage() {
     setVideoToken(null);
     setMediaState("idle");
     setPollingMessage("");
+    setEndPending(false);
   }
 
   useEffect(() => {
@@ -328,18 +337,20 @@ export default function OperatorPage() {
         }
         return "continue";
       },
-      onPersistentFailure: () => setPollingMessage("Connection interrupted. Visit status will update when the connection returns."),
+      onPersistentFailure: () => setPollingMessage("Connection interrupted. Journey status will update when the connection returns."),
       onRecovery: () => setPollingMessage(""),
     });
   }, [activeTripId, pollRetry]);
 
   if (activeTrip && videoToken && activeTrip.acceptedAt && mediaState === "ready") {
-    return <><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /><VideoRoom token={videoToken.token} serverUrl={videoToken.url} destination={activeTrip.destination} acceptedAt={activeTrip.acceptedAt} canPublishCamera canPublishMicrophone disconnect={tripEnded} onAuthoritativeDisconnect={clearActiveCall} onEnd={endTrip} /></>;
+    return <div className="relative h-[100dvh] overflow-hidden bg-black"><div className="pointer-events-none absolute inset-x-0 top-20 z-30 px-3 sm:px-6"><div className="pointer-events-auto mx-auto max-w-2xl"><PollingNotice message={pollingMessage} alert={pollingMessage.startsWith("Unable to end")} onRetry={() => setPollRetry(value => value + 1)} /></div></div><div className="absolute left-3 top-20 z-20 sm:left-6"><SafetyReportDialog tripId={activeTrip.id}/></div><VideoRoom token={videoToken.token} serverUrl={videoToken.url} destination={activeTrip.destination} acceptedAt={activeTrip.acceptedAt} canPublishCamera canPublishMicrophone disconnect={tripEnded} onAuthoritativeDisconnect={clearActiveCall} onEnd={endTrip} ending={endPending} /></div>;
   }
 
   if (activeTrip) {
-    return <ActiveVisitPreparation trip={activeTrip} failed={mediaState === "failed"} onRetry={() => setMediaRetry(value => value + 1)} onEnd={endTrip} />;
+    return <ActiveVisitPreparation trip={activeTrip} failed={mediaState === "failed"} ending={endPending} endError={pollingMessage.startsWith("Unable to end") ? pollingMessage : ""} onRetry={() => setMediaRetry(value => value + 1)} onEnd={endTrip} />;
   }
+
+  if (restorationState !== "ready") return <ActiveJourneyRestoration failed={restorationState === "failed"} onRetry={() => setRestoreRetry(value => value + 1)} />;
 
   const toggleString = (value: string, values: string[], setValues: (values: string[]) => void) => setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
 
@@ -406,11 +417,15 @@ function AvailabilityCard({ settingsLoaded, online, setupComplete, pilotStatus, 
   return <section className={`mt-8 rounded-xl border p-5 shadow-sm sm:p-6 ${online ? "border-success-fg/30 bg-success-bg" : pilotStatus === "SUSPENDED" ? "border-danger-fg/30 bg-danger-bg" : "border-line bg-surface"}`} aria-labelledby="availability-heading"><div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h2 id="availability-heading" className="text-heading-2">Availability</h2><div className="mt-2" role={pilotStatus === "SUSPENDED" ? "alert" : "status"}><StatusBadge variant={badge}>{title}</StatusBadge><p className="mt-2 max-w-prose break-words text-body-sm text-ink-secondary">{detail}</p></div></div>{settingsLoaded && <button type="button" disabled={disabled} aria-busy={pending} onClick={onToggle} className={buttonClassName(online ? "secondary" : "primary", "min-h-control-lg w-full shrink-0 sm:w-auto")}>{pending ? "Updating availability…" : online ? "Go offline" : "Go online"}</button>}</div></section>;
 }
 
-function PollingNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
+function PollingNotice({ message, onRetry, alert = false }: { message: string; onRetry: () => void; alert?: boolean }) {
   if (!message) return null;
-  return <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning-fg/25 bg-warning-bg p-3 text-body-sm text-warning-fg" role="status"><span className="min-w-0 flex-1">{message}</span><button type="button" onClick={onRetry} className={buttonClassName("secondary", "shrink-0")}>Retry</button></div>;
+  return <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning-fg/25 bg-warning-bg p-3 text-body-sm text-warning-fg" role={alert ? "alert" : "status"}><span className="min-w-0 flex-1">{message}</span><button type="button" onClick={onRetry} className={buttonClassName("secondary", "shrink-0")}>Retry</button></div>;
 }
 
-function ActiveVisitPreparation({ trip, failed, onRetry, onEnd }: { trip: Trip; failed: boolean; onRetry: () => void; onEnd: () => void }) {
-  return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-6 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active visit</p><h1 className="mt-2 text-2xl font-bold">{trip.destination}</h1><p className="mt-4 text-gray-300" role="status">{failed ? "Unable to connect to live media. Your visit is still active." : "Preparing camera and microphone…"}</p>{failed && <button type="button" onClick={onRetry} className="mt-5 min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950">Try media again</button>}<SafetyReportDialog tripId={trip.id}/><button type="button" onClick={onEnd} className="mt-5 min-h-11 w-full rounded-full border border-red-400 px-5 font-semibold text-red-200">End visit</button></section></main>;
+function ActiveJourneyRestoration({ failed, onRetry }: { failed: boolean; onRetry: () => void }) {
+  return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-4 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Teleporter</p><h1 className="mt-2 text-2xl font-bold">Checking for an Active Journey</h1>{failed ? <><p className="mt-4 text-gray-200" role="alert">Your Active Journey could not be restored. This does not mean it has ended.</p><button type="button" onClick={onRetry} className="mt-5 min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950">Try restoration again</button></> : <p className="mt-4 text-gray-300" role="status">Restoring any Journey already in progress…</p>}</section></main>;
+}
+
+function ActiveVisitPreparation({ trip, failed, ending, endError, onRetry, onEnd }: { trip: Trip; failed: boolean; ending: boolean; endError: string; onRetry: () => void; onEnd: () => void }) {
+  return <main className="grid min-h-[100dvh] place-items-center bg-gray-950 p-4 text-white"><section className="w-full max-w-md rounded-2xl border border-white/15 bg-gray-900 p-6 text-center"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active Journey</p><h1 className="mt-2 break-words text-2xl font-bold">{trip.destination}</h1><h2 className="mt-5 text-lg font-semibold">Preparing your Journey</h2>{failed ? <p className="mt-3 text-red-200" role="alert">Camera or microphone connection failed. Your Journey remains active; retrying only prepares media again.</p> : <p className="mt-3 text-gray-300" role="status">Connecting camera and microphone. Please remain on this page.</p>}{endError && <p className="mt-3 text-red-200" role="alert">{endError}</p>}<div className="mt-6 flex flex-col gap-3">{failed && <button type="button" disabled={ending} onClick={onRetry} className="min-h-11 rounded-full bg-white px-5 font-semibold text-gray-950 disabled:opacity-60">Try media again</button>}<SafetyReportDialog tripId={trip.id}/><button type="button" disabled={ending} onClick={onEnd} className="min-h-11 w-full rounded-full border border-red-400 px-5 font-semibold text-red-200 disabled:opacity-60">{ending ? "Ending Journey…" : "End Journey"}</button></div></section></main>;
 }

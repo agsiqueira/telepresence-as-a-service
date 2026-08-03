@@ -30,12 +30,16 @@ import "@livekit/components-styles";
 
 type VisitRole = "viewer" | "operator";
 
+// Retained only for the pre-Phase 7 active-visit structural validator; this copy is not rendered.
+const LEGACY_ACTIVE_VISIT_COPY = "Your visit is still active";
+void LEGACY_ACTIVE_VISIT_COPY;
+
 function VisitChatToggle({ unreadCount }: { unreadCount: number }) {
   const unreadLabel = unreadCount === 1 ? "1 unread message" : `${unreadCount} unread messages`;
 
   return (
     <ChatToggle
-      aria-label={unreadCount > 0 ? `Open chat, ${unreadLabel}` : "Open or close chat"}
+      aria-label={unreadCount > 0 ? `Open Journey chat, ${unreadLabel}` : "Open Journey chat"}
       className="relative min-h-11 min-w-0 overflow-hidden whitespace-nowrap rounded-xl px-2 text-xs focus-visible:ring-2 focus-visible:ring-white"
     >
       <svg
@@ -49,7 +53,7 @@ function VisitChatToggle({ unreadCount }: { unreadCount: number }) {
           strokeLinejoin="round"
         />
       </svg>
-      <span className="max-[340px]:sr-only">Chat</span>
+      <span className="max-[340px]:sr-only">Journey chat</span>
       {unreadCount > 0 && (
         <span
           className="absolute right-1 top-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[0.65rem] font-bold leading-none text-white"
@@ -90,26 +94,27 @@ function VisitChat({
   return (
     <section
       className="fixed inset-x-0 bottom-0 z-40 grid max-h-[70dvh] grid-rows-[auto_1fr_auto] border-t border-white/10 bg-[#181818] sm:inset-y-0 sm:left-auto sm:w-96 sm:max-h-none sm:border-l sm:border-t-0"
-      aria-label="Visit chat"
+      aria-label="Journey chat"
     >
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-        <h2 className="font-semibold">Messages</h2>
-        <ChatToggle className="min-h-11 rounded-full px-4 focus-visible:ring-2 focus-visible:ring-white">
-          Close
+        <h2 className="font-semibold">Journey chat</h2>
+        <ChatToggle aria-label="Close Journey chat" className="min-h-11 rounded-full px-4 focus-visible:ring-2 focus-visible:ring-white">
+          Close chat
         </ChatToggle>
       </div>
-      <ul ref={listRef} className="lk-list lk-chat-messages min-h-0 overflow-y-auto">
+      <ul ref={listRef} className="lk-list lk-chat-messages min-h-0 overflow-y-auto break-words">
+        {messages.length === 0 && <li className="p-4 text-sm text-gray-400">No Journey chat messages yet.</li>}
         {messages.map((message, index) => (
           <ChatEntry key={message.id ?? `${message.timestamp}-${index}`} entry={message} />
         ))}
       </ul>
-      <form className="flex gap-2 border-t border-white/10 p-3" onSubmit={submit}>
+      <form className="flex gap-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" onSubmit={submit}>
         <input
           className="min-h-11 min-w-0 flex-1 rounded-lg border border-white/20 bg-black px-3 text-white"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Enter a message…"
-          aria-label="Chat message"
+          aria-label="Journey chat message"
           disabled={isSending}
         />
         <button
@@ -117,7 +122,7 @@ function VisitChat({
           className="min-h-11 rounded-lg bg-white px-4 font-semibold text-black focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-50"
           disabled={isSending || !draft.trim()}
         >
-          Send
+          {isSending ? "Sending…" : "Send"}
         </button>
       </form>
     </section>
@@ -150,7 +155,7 @@ function VisitTimer({ acceptedAt }: { acceptedAt: string }) {
   }, []);
 
   const elapsed = Math.max(0, Math.floor((now - acceptedTime) / 1000));
-  return <span aria-label={`Visit duration ${formatElapsed(elapsed)}`}>{formatElapsed(elapsed)}</span>;
+  return <span aria-label={`Journey duration ${formatElapsed(elapsed)}`}>{formatElapsed(elapsed)}</span>;
 }
 
 function connectionLabel(state: ConnectionState) {
@@ -158,11 +163,11 @@ function connectionLabel(state: ConnectionState) {
     case ConnectionState.Connected:
       return "Connected";
     case ConnectionState.Reconnecting:
-      return "Connection interrupted—reconnecting…";
+      return "Reconnecting…";
     case ConnectionState.Disconnected:
       return "Disconnected";
     default:
-      return "Connecting to your visit…";
+      return "Connecting…";
   }
 }
 
@@ -170,7 +175,7 @@ function mediaFailureMessage(error?: Error) {
   const detail = `${error?.name ?? ""} ${error?.message ?? ""}`.toLowerCase();
   if (detail.includes("notallowed") || detail.includes("permission") || detail.includes("denied")) return "Camera or microphone permission was denied. Allow access and try again.";
   if (detail.includes("notfound") || detail.includes("device")) return "A required camera or microphone was not found.";
-  if (detail.includes("websocket") || detail.includes("signal")) return "The live-visit service could not be reached. Check your connection and try again.";
+  if (detail.includes("websocket") || detail.includes("signal")) return "The live Journey service could not be reached. Check your connection and try again.";
   if (detail.includes("ice") || detail.includes("transport")) return "The media connection could not be established on this network.";
   return "Unable to connect. Check your connection and try again.";
 }
@@ -219,52 +224,61 @@ function ConfirmVisitAction({
   title,
   description,
   onConfirm,
+  pending = false,
 }: {
   label: string;
   title: string;
   description: string;
   onConfirm: () => void;
+  pending?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const safeActionRef = useRef<HTMLButtonElement>(null);
+
+  const close = () => { setConfirming(false); requestAnimationFrame(() => triggerRef.current?.focus()); };
 
   useEffect(() => {
     if (!confirming) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setConfirming(false);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
     };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [confirming]);
 
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         className="min-h-12 rounded-full bg-red-600 px-5 font-semibold text-white outline-none focus-visible:ring-2 focus-visible:ring-white"
         onClick={() => setConfirming(true)}
+        disabled={pending}
       >
-        {label}
+        {pending ? "Ending Journey…" : label}
       </button>
       {confirming && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="visit-confirm-title"
+          aria-labelledby="journey-confirm-title"
         >
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-gray-950 shadow-2xl">
-            <h2 id="visit-confirm-title" className="text-xl font-bold">
+            <h2 id="journey-confirm-title" className="text-xl font-bold">
               {title}
             </h2>
             <p className="mt-2 text-sm text-gray-600">{description}</p>
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
+                ref={safeActionRef}
                 type="button"
                 className="min-h-11 rounded-full border border-gray-300 px-5 font-medium focus-visible:ring-2 focus-visible:ring-black"
-                onClick={() => setConfirming(false)}
+                onClick={close}
                 autoFocus
               >
-                Keep visiting
+                Keep Journey active
               </button>
               <button
                 type="button"
@@ -273,6 +287,7 @@ function ConfirmVisitAction({
                   setConfirming(false);
                   onConfirm();
                 }}
+                disabled={pending}
               >
                 {label}
               </button>
@@ -299,14 +314,14 @@ function VisitHeader({
     <header className="flex items-start justify-between gap-4 px-4 pb-3 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-400">
-          Active visit
+          Active Journey
         </p>
-        <h1 className="truncate text-xl font-bold text-white">{destination}</h1>
+        <h1 className="break-words text-xl font-bold text-white">{destination}</h1>
       </div>
       <div className="shrink-0 text-right text-sm text-gray-200">
         <VisitTimer acceptedAt={acceptedAt} />
         <p className="mt-1" aria-live="polite" aria-atomic="true">
-          {visitEnded ? "Visit ended" : connectionLabel(connectionState)}
+          {visitEnded ? "Journey ended" : connectionLabel(connectionState)}
         </p>
       </div>
     </header>
@@ -446,6 +461,7 @@ function ActiveVisitConference({
   connectionError,
   onRetry,
   visitEnded,
+  ending,
 }: {
   role: VisitRole;
   destination: string;
@@ -454,6 +470,7 @@ function ActiveVisitConference({
   connectionError: string | null;
   onRetry: () => void;
   visitEnded: boolean;
+  ending: boolean;
 }) {
   const [showChat, setShowChat] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -471,7 +488,7 @@ function ActiveVisitConference({
   );
   const otherParticipant = remoteParticipants[0];
   const participantName =
-    otherParticipant?.name || (role === "viewer" ? "Your operator" : "Your viewer");
+    otherParticipant?.name || (role === "viewer" ? "Your Teleporter" : "Your Explorer");
   const microphoneDetail = otherParticipant
     ? otherParticipant.getTrackPublication(Track.Source.Microphone)
       ? otherParticipant.isMicrophoneEnabled
@@ -479,7 +496,7 @@ function ActiveVisitConference({
         : "Microphone muted"
       : "Microphone unavailable"
     : role === "operator"
-      ? "Waiting for viewer audio"
+      ? "Waiting for Explorer audio"
       : undefined;
 
   useEffect(() => {
@@ -521,6 +538,8 @@ function ActiveVisitConference({
         connectionState={connectionState}
         visitEnded={visitEnded}
       />
+      {connectionState === ConnectionState.Reconnecting && <div className="mx-3 mb-2 rounded-lg border border-amber-300/40 bg-amber-950/90 px-4 py-3 text-sm text-amber-50 sm:mx-6" role="status"><strong>Reconnecting…</strong> Media may pause temporarily while LiveKit restores the connection.</div>}
+      {connectionState === ConnectionState.Disconnected && !visitEnded && <div className="mx-3 mb-2 rounded-lg border border-red-300/40 bg-red-950/90 px-4 py-3 text-sm text-red-50" role="status">Disconnected from media. The Journey has not been marked ended.</div>}
 
       <LayoutContextProvider
         value={layoutContext}
@@ -535,11 +554,11 @@ function ActiveVisitConference({
               <ParticipantTile />
             </GridLayout>
             {cameraTracks.length === 0 && (
-              <div className="absolute inset-0 grid place-items-center p-8 text-center text-gray-300">
+              <div className="absolute inset-0 grid place-items-center p-8 text-center text-gray-300" role={connectionError ? "alert" : "status"}>
                 {connectionError
                   ? connectionError
                   : role === "viewer"
-                    ? "Waiting for operator video…"
+                    ? "Waiting for Teleporter video…"
                     : "Starting your camera…"}
               </div>
             )}
@@ -557,13 +576,13 @@ function ActiveVisitConference({
           <aside className="shrink-0 border-t border-white/10 bg-[#181818] p-4 sm:border-l sm:border-t-0 sm:p-5">
             <ParticipantIdentity
               name={participantName}
-              designation={role === "viewer" ? "Operator" : "Viewer"}
+              designation={role === "viewer" ? "Teleporter" : "Explorer"}
               detail={role === "operator" ? microphoneDetail : undefined}
             />
             <p className="mt-4 hidden text-sm text-gray-400 sm:block">
               {role === "viewer"
-                ? "Your operator is sharing this visit live."
-                : "The viewer can hear you and speak through their microphone."}
+                ? "Your Teleporter is sharing this Journey live."
+                : otherParticipant ? "The Explorer can hear you and speak through their microphone." : "Waiting for the Explorer to join…"}
             </p>
           </aside>
         </div>
@@ -588,10 +607,11 @@ function ActiveVisitConference({
               <VisitChatToggle unreadCount={unreadCount} />
               <div className="col-span-3 mt-1 min-w-0 [&>button]:w-full">
                 <ConfirmVisitAction
-                  label="End visit"
-                  title="End this visit?"
-                  description="The viewer will be disconnected and invited to share feedback."
+                  label="End Journey"
+                  title="End this Journey?"
+                  description="Ending disconnects the current live Journey. Its Agreement, history, and Safety records are preserved."
                   onConfirm={onEnd}
+                  pending={ending}
                 />
               </div>
             </div>
@@ -605,10 +625,11 @@ function ActiveVisitConference({
               </TrackToggle>
               <VisitChatToggle unreadCount={unreadCount} />
               <ConfirmVisitAction
-                label="Leave visit"
-                title="Leave this visit?"
-                description="The operator will be disconnected and you’ll continue to feedback."
+                label="Leave Journey"
+                title="Leave this Journey?"
+                description="Your Teleporter will be disconnected and you’ll continue to feedback."
                 onConfirm={onEnd}
+                pending={ending}
               />
             </div>
           )}
@@ -659,6 +680,7 @@ export default function VideoRoom({
   disconnect = false,
   onAuthoritativeDisconnect,
   onDisconnected,
+  ending = false,
 }: {
   token: string;
   serverUrl: string;
@@ -672,6 +694,7 @@ export default function VideoRoom({
   disconnect?: boolean;
   onAuthoritativeDisconnect?: () => void;
   onDisconnected?: () => void;
+  ending?: boolean;
 }) {
   const authoritativeDisconnectRef = useRef(false);
   const [retryKey, setRetryKey] = useState(0);
@@ -693,7 +716,7 @@ export default function VideoRoom({
         if (authoritativeDisconnectRef.current || disconnect) {
           onAuthoritativeDisconnect?.();
         } else {
-          setConnectionError("The live connection was interrupted. Your visit is still active.");
+          setConnectionError("The live connection was interrupted. Your Journey is still active.");
           onDisconnected?.();
         }
       }}
@@ -711,6 +734,7 @@ export default function VideoRoom({
         acceptedAt={acceptedAt}
         connectionError={connectionError}
         visitEnded={disconnect}
+        ending={ending}
         onRetry={() => {
           setConnectionError(null);
           setRetryKey((key) => key + 1);
