@@ -92,6 +92,35 @@ The protected-route statuses above remain blocked because no legitimate authenti
 | `RESP-01` | Passed — browser (public only) | `/`, `/sign-in`, and `/sign-up` had one `h1`, one main, and no document overflow at 320, 390, 768, and 1280 CSS pixels. |
 | `RESP-02` | Manual test required | Protected populated translated-like and long-token states could not be rendered; source protections were inspected only. |
 
+## Phase 8.4 failure and concurrency evidence overlay
+
+The following evidence refines the existing entries without converting database or source results into browser passage. No authenticated or paired browser session was available. Protected offline, delay, abort, and response-injection execution is `Blocked — network tooling unavailable`.
+
+| Entries | Phase 8.4 classification | Evidence |
+|---|---|---|
+| `AUTH-02`, `EXP-01`–`EXP-04`, `TEL-01`–`TEL-05`, `APP-01`, `SAFE-02`, `LIVE-01` | Passed — source inspection; Blocked — authentication | Duplicate guards, pending labels, abort paths, privacy-safe failures, authoritative reloads, and policy-owned endpoints were inspected. Protected stale-tab/network/browser execution remains blocked. |
+| `IM-01`, `IM-02` | Passed — database | Guarded suites passed assignment, duplicate submission, accept/decline, accept/cancel, expiry, duplicate start/end, and stale recovery races. Paired browser execution remains `Blocked — paired role`. |
+| `SR-01`, `AG-01` | Passed — database | Competing Proposal acceptance, retry, withdrawal, decline, revision, expiry, Request withdrawal, transactional Agreement creation, immutable timing, and overlap protection passed. |
+| `RS-01`, `RS-02` | Passed — database | Reciprocal permissions, duplicate creation/acceptance, replacement rollback, accept/start, accept/cancel, and accept/decline/withdraw races passed. Paired browser convergence remains blocked. |
+| `LM-01`, `LM-02`, `GE-01`, `GE-02` | Passed — database and source inspection | Ownership/version markers and guarded cross-mode capacity/overlap suites passed. Authenticated stale-editor browser execution remains blocked. |
+| `SAFE-01`, `SAFE-03` | Passed — database | Duplicate Safety submission, independent-client uniqueness, policy enforcement, and restriction-versus-Journey ordering passed. Browser policy-change execution remains blocked. |
+| `HARD-01` | Passed — database; Blocked — authentication | Core conflict authority is database-proven. Two-session UI convergence, browser Back/Forward, refresh-during-mutation, and protected network recovery were not executed. |
+
+Granular Phase 8.4 scenarios:
+
+| ID | Scenario | Status | Evidence or limitation |
+|---|---|---|---|
+| HARD-02 | Immediate offer expiry and stale duplicate action | Passed — database | Accept/expiry, decline/expiry, duplicate expiration, and newer-offer protection passed; stale-tab presentation is blocked. |
+| HARD-03 | Duplicate Journey end | Passed — database | Repeated end is idempotent and protects a newer active reservation. |
+| HARD-04 | Stale Proposal mutation | Passed — database | Acceptance versus revision/withdrawal/decline/expiry and same-Proposal retry passed. |
+| HARD-05 | Concurrent rescheduling | Passed — database | Accept/decline/withdraw, accept/start, and accept/cancel resolve to one coherent result. |
+| HARD-06 | Offering version and occurrence conflicts | Passed — source inspection | `expectedVersion` and `expectedStartAt` remain server checked; authenticated two-tab execution is blocked. |
+| HARD-07 | Polling interruption and recovery | Passed — automated | Resilient poller backoff, abort, persistent-failure, recovery, and stop behavior pass automated/source guards; browser offline simulation is blocked. |
+| HARD-08 | Account or pilot state changes while open | Blocked — authentication | Server-owned refresh/mutation boundaries passed source and account-status suites; open-session browser execution was unavailable. |
+| HARD-09 | Safety restriction changes while open | Passed — database | Restriction-versus-Journey ordering passed; open-session browser presentation remains blocked. |
+| HARD-10 | Refresh during mutation | Manual test required | Server recovery/idempotency is database-proven; browser refresh timing was not executed. |
+| HARD-11 | Browser Back/Forward after mutation | Manual test required | No browser history mutation flow was available without authentication. |
+
 ## Classification summary
 
 - **Structurally validated:** canonical route files, guards, endpoint ownership, privacy markers, role-specific `VideoRoom` call sites, loading/failure/retry markers, and responsive/accessibility source markers.
