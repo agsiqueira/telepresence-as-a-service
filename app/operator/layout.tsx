@@ -8,5 +8,12 @@ export default async function OperatorLayout({
   children: ReactNode;
 }) {
   await requireTeleporterPage();
-  return <ContextShell context="Teleporter" navigationLabel="Teleporter" items={[{label:"Explore",href:"/viewer"},{label:"Teleport",href:"/operator",exact:true},{label:"Requests",href:"/operator/opportunities"}]}>{children}</ContextShell>;
+  const items = [
+    { label: "Home", href: "/operator", exact: true },
+    { label: "Requests", href: "/operator/requests" },
+    { label: "Journeys", href: "/operator/journeys" },
+    { label: "Offerings", href: "/operator/offerings" },
+    { label: "Account", href: "/operator/account" },
+  ];
+  return <ContextShell context="Teleporter" navigationLabel="Teleporter primary navigation" items={items} persistentMobileNavigation secondaryLink={{ label: "Open Explorer", href: "/viewer" }}>{children}</ContextShell>;
 }

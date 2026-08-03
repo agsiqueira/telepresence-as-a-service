@@ -1,2 +1,5 @@
-import ProposalManager from "@/components/ProposalManager";
-export default function ProposalPage({params}:{params:{id:string}}){return <ProposalManager requestId={params.id}/>}
+import { redirect } from "next/navigation";
+
+export default function OpportunityPage({ params }: { params: { id: string } }) {
+  redirect(`/operator/requests/${params.id}`);
+}
