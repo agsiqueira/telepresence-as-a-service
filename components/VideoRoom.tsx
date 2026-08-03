@@ -26,6 +26,7 @@ import {
   type CameraFacing,
 } from "@/lib/camera-switch";
 import { ConnectionState, LocalVideoTrack, Track } from "livekit-client";
+import { cycleDialogFocus } from "@/lib/admin-role-ui";
 import "@livekit/components-styles";
 
 type VisitRole = "viewer" | "operator";
@@ -235,6 +236,7 @@ function ConfirmVisitAction({
   const [confirming, setConfirming] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const safeActionRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const close = () => { setConfirming(false); requestAnimationFrame(() => triggerRef.current?.focus()); };
 
@@ -264,8 +266,13 @@ function ConfirmVisitAction({
           role="dialog"
           aria-modal="true"
           aria-labelledby="journey-confirm-title"
+          onKeyDown={(event) => {
+            if (event.key !== "Tab" || !dialogRef.current) return;
+            const elements = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled])')];
+            cycleDialogFocus(event.nativeEvent, elements, elements.indexOf(document.activeElement as HTMLElement));
+          }}
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-gray-950 shadow-2xl">
+          <div ref={dialogRef} className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 text-gray-950 shadow-2xl">
             <h2 id="journey-confirm-title" className="text-xl font-bold">
               {title}
             </h2>

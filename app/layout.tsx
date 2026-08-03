@@ -35,7 +35,7 @@ export default function RootLayout({
             </nav>
             </div>
           </header>
-          <main id="main-content" tabIndex={-1} className="min-h-[calc(100dvh-4rem)]">{children}</main>
+          <div id="main-content" tabIndex={-1} className="min-h-[calc(100dvh-4rem)] outline-none">{children}</div>
         </body>
       </html>
     </ClerkProvider>
