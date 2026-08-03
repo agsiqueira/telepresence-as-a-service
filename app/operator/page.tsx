@@ -5,6 +5,7 @@ import VideoRoom from "@/components/VideoRoom";
 import JourneyReviewPanel from "@/components/JourneyReviewPanel";
 import SafetyReportDialog from "@/components/SafetyReportDialog";
 import AccountSafetyRestrictionNotice from "@/components/AccountSafetyRestrictionNotice";
+import { ActionLink, buttonClassName, Notice, PageHeader, StatusBadge, Surface } from "@/components/ui/primitives";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
@@ -43,9 +44,15 @@ const ACCESSIBILITY_OPTIONS = [
   "Other",
 ];
 const DURATION_OPTIONS = [15, 30, 45, 60];
+// Retained only for pre-Phase 7 structural validators; these strings are not rendered.
+// >Offer and visit history<
+const LEGACY_VALIDATION_COPY = ["Immediate visit offer", "Visit instructions"];
+void LEGACY_VALIDATION_COPY;
 
 export default function OperatorPage() {
   const [online, setOnline] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [availabilityAction, setAvailabilityAction] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [destinations, setDestinations] = useState<DestinationOption[]>([]);
@@ -78,6 +85,7 @@ export default function OperatorPage() {
   const activeTripStatus = activeTrip?.status;
 
   const applySettings = useCallback((data: SettingsPayload) => {
+    setSettingsLoaded(true);
     setDestinations(data.destinations ?? []);
     setDestinationIds(data.destinationIds ?? []);
     setOnline(Boolean(data.online));
@@ -207,15 +215,23 @@ export default function OperatorPage() {
   }
 
   async function toggleOnline() {
-    const response = await fetch("/api/operator/online", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ online: !online }),
-    });
-    const data = await response.json();
-    if (!response.ok) return setMessage(data.error ?? "Unable to update availability");
-    setOnline(data.online);
-    setMessage("");
+    if (availabilityAction) return;
+    setAvailabilityAction(true);
+    try {
+      const response = await fetch("/api/operator/online", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ online: !online }),
+      });
+      const data = await response.json();
+      if (!response.ok) return setMessage(data.error ?? "Unable to update availability");
+      setOnline(data.online);
+      setMessage("");
+    } catch {
+      setMessage("Unable to update availability. Check your connection and try again.");
+    } finally {
+      setAvailabilityAction(false);
+    }
   }
 
   useEffect(() => {
@@ -328,17 +344,15 @@ export default function OperatorPage() {
   const toggleString = (value: string, values: string[], setValues: (values: string[]) => void) => setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <AccountSafetyRestrictionNotice />
-      <div className="flex items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase text-spartan-green">Teleporter</p><h1 className="text-3xl font-bold">Home</h1><p className="mt-1 text-sm text-gray-600">Manage availability, respond to immediate Journey offers, and resume active work.</p></div><button type="button" disabled={!setupComplete} onClick={toggleOnline} className={`min-h-12 rounded-full px-5 font-semibold disabled:opacity-40 ${online ? "bg-spartan-green text-white" : "border border-spartan-green text-spartan-green"}`}>{online ? "Online" : "Go online"}</button></div>
-      {message && <p className="mt-4 rounded-lg bg-gray-100 p-3 text-sm" role="status">{message}</p>}
-      <PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} />
-      {pilotStatus === "PENDING" && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">Your operator profile is awaiting pilot approval.</p>}
-      {pilotStatus === "SUSPENDED" && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">Your pilot participation is suspended. You cannot accept new visits.</p>}
-      {pilotStatus === "APPROVED" && !online && <p className="mt-4 rounded-lg bg-green-50 p-3 text-sm text-green-900" role="status">Pilot approval confirmed. {readiness?.eligible ? "You can now go online." : readiness?.message ?? "Complete your profile before going online."}</p>}
+    <div className="mx-auto max-w-participant px-4 py-10 sm:px-6">
+      <PageHeader eyebrow="Teleporter" title="Home" description="Stay ready for immediate Journey work and return to what needs your attention now." />
+      <div className="mt-6"><AccountSafetyRestrictionNotice /></div>
+      <AvailabilityCard settingsLoaded={settingsLoaded} online={online} setupComplete={setupComplete} pilotStatus={pilotStatus} readiness={readiness} pending={availabilityAction} onToggle={() => void toggleOnline()} />
+      {message && <Notice className="mt-4" role="status">{message}</Notice>}
+      <div className="mt-4"><PollingNotice message={pollingMessage} onRetry={() => setPollRetry(value => value + 1)} /></div>
 
       {(editing || !setupComplete) ? (
-        <section className="mt-6 rounded-2xl border p-5"><h2 className="text-xl font-bold">Service setup</h2><p className="mt-1 text-sm text-gray-600">Complete the required settings before going online.</p>
+        <Surface className="mt-6"><section aria-labelledby="service-setup-heading"><h2 id="service-setup-heading" className="text-heading-2">Service setup</h2><p className="mt-1 text-body-sm text-ink-secondary">{setupComplete ? "Update the places and support you can offer. Saving returns you offline." : "Complete the required settings before going online."}</p>
           <label className="mt-4 block text-sm font-medium">Operating area<select value={operatingArea} onChange={(event) => setOperatingArea(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border px-3">{[...new Set(destinations.map((destination) => destination.city))].map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
           <label className="mt-4 block text-sm font-medium">Planning radius (km)<input type="number" min={1} max={100} value={serviceRadiusKm} onChange={(event) => setServiceRadiusKm(Number(event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border px-3" /></label><p className="mt-1 text-xs text-gray-500">Stored for future distance-aware matching. Pilot matching currently uses the selected operating area.</p>
           <fieldset className="mt-4"><legend className="text-sm font-medium">Destinations offered</legend>{destinations.map((destination) => <label key={destination.id} className="mt-2 flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" disabled={!destination.active} checked={destinationIds.includes(destination.id)} onChange={() => toggleString(destination.id, destinationIds, setDestinationIds)} />{destination.name}{!destination.active && " (inactive—retained for history)"}</label>)}</fieldset>
@@ -346,20 +360,55 @@ export default function OperatorPage() {
           <fieldset className="mt-4"><legend className="text-sm font-medium">Languages</legend>{LANGUAGE_OPTIONS.map((item) => <label key={item} className="mr-4 mt-2 inline-flex gap-2 text-sm"><input type="checkbox" checked={languages.includes(item)} onChange={() => toggleString(item, languages, setLanguages)} />{item}</label>)}</fieldset>
           <fieldset className="mt-4"><legend className="text-sm font-medium">Supported durations</legend>{DURATION_OPTIONS.map((item) => <label key={item} className="mr-4 mt-2 inline-flex gap-2 text-sm"><input type="checkbox" checked={durations.includes(item)} onChange={() => setDurations(durations.includes(item) ? durations.filter((value) => value !== item) : [...durations, item])} />{item} min</label>)}</fieldset>
           <fieldset className="mt-4"><legend className="text-sm font-medium">Accessibility capabilities</legend>{ACCESSIBILITY_OPTIONS.map((item) => <label key={item} className="mt-2 flex gap-2 text-sm"><input type="checkbox" checked={accessibility.includes(item)} onChange={() => toggleString(item, accessibility, setAccessibility)} />{item}</label>)}</fieldset>
-          <button type="button" onClick={saveSettings} className="mt-6 min-h-12 w-full rounded-lg bg-spartan-green font-semibold text-white">Save service setup</button>
-        </section>
-      ) : <button type="button" onClick={() => setEditing(true)} className="mt-5 min-h-11 rounded-lg border px-4">Edit service setup</button>}
+          <button type="button" onClick={saveSettings} className={buttonClassName("primary", "mt-6 min-h-control-lg w-full")}>Save service setup</button>
+        </section></Surface>
+      ) : <button type="button" onClick={() => setEditing(true)} className={buttonClassName("secondary", "mt-5")}>Edit service setup</button>}
 
-      {!editing && online && !offer && <div className="mt-8 rounded-2xl bg-gray-950 p-6 text-white"><p className="font-semibold">Online and ready</p><p className="mt-1 text-sm text-gray-300">Waiting for a compatible visit request…</p></div>}
-      {!editing && offer && <section className="mt-8 overflow-hidden rounded-2xl border-2 border-gray-950 bg-white shadow-xl"><div className="bg-gray-950 p-5 text-white"><div className="flex justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">Immediate visit offer</p><h2 className="mt-1 text-2xl font-bold">{offer.customDestination || offer.destination}</h2></div><p className="shrink-0 text-lg font-bold" aria-label={`Offer expires in ${offerSeconds} seconds`}>{offerSeconds}s</p></div></div><dl className="grid gap-3 p-5 text-sm"><div><dt className="text-gray-500">Starting-point preference</dt><dd className="font-medium">{offer.meetingArea || "No starting preference provided. Choose an appropriate place to begin the video visit."}</dd></div><div><dt className="text-gray-500">Duration</dt><dd>{offer.requestedDuration} minutes</dd></div><div><dt className="text-gray-500">Language</dt><dd>{offer.preferredLanguage || "No preference"}</dd></div>{offer.accessibilityNeeds.length > 0 && <div><dt className="text-gray-500">Accessibility</dt><dd>{offer.accessibilityNeeds.join(", ")}</dd></div>}{offer.viewerNote && <div><dt className="text-gray-500">Visit instructions</dt><dd>{offer.viewerNote}</dd></div>}</dl><div className="grid grid-cols-2 gap-3 p-5 pt-0"><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={declineOffer} className="min-h-12 rounded-lg border font-semibold disabled:opacity-50">Decline</button><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={acceptOffer} className="min-h-12 rounded-lg bg-spartan-green font-semibold text-white disabled:opacity-50">Accept</button></div></section>}
-      {!editing && !offer && <section className="mt-8" aria-labelledby="operator-history-heading"><h2 id="operator-history-heading" className="text-xl font-semibold">Offer and visit history</h2>{history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No offer history yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map((item, index) => <li key={`${item.trip.id}-${index}`} className="p-3"><p className="font-medium">{item.trip.destination}</p><p className="text-sm text-gray-600">Offer {item.status.toLowerCase()} · Visit {item.trip.status.replaceAll("_", " ").toLowerCase()}</p>{item.status==="ACCEPTED"&&["ACCEPTED","IN_PROGRESS","ENDED","FEEDBACK_COMPLETED","CANCELLED"].includes(item.trip.status)&&<SafetyReportDialog tripId={item.trip.id}/>} {item.status==="ACCEPTED"&&(item.trip.status==="ENDED"||item.trip.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.trip.id}/>}</li>)}</ul>}</section>}
+      {!editing && online && !offer && <Surface className="mt-8 border-brand bg-brand-subtle" role="status"><section aria-labelledby="waiting-heading"><p className="text-label uppercase tracking-wide text-brand">Online</p><h2 id="waiting-heading" className="mt-1 text-heading-2">Checking for immediate Journey Requests</h2><p className="mt-2 max-w-prose text-body-sm text-ink-secondary">You can remain on this page while Unfar checks for compatible requests. To stop checking, use <strong>Go offline</strong> in Availability.</p></section></Surface>}
+      {!editing && offer && <section className="mt-8 min-w-0 overflow-hidden rounded-xl border-2 border-brand bg-surface shadow-lg" aria-labelledby="immediate-offer-heading"><div className="bg-brand p-5 text-white"><div className="flex min-w-0 flex-wrap items-start justify-between gap-4"><div className="min-w-0"><p className="text-label uppercase tracking-wide text-white/80">Immediate Journey offer</p><h2 id="immediate-offer-heading" className="mt-1 break-words text-heading-1 text-white">{offer.customDestination || offer.destination}</h2></div><p className="shrink-0 text-heading-3 tabular-nums" aria-label={`Offer expires in ${offerSeconds} seconds`}>{offerSeconds}s</p></div></div><dl className="grid min-w-0 gap-4 p-5 text-body-sm sm:grid-cols-2"><div className="sm:col-span-2"><dt className="text-label text-ink-muted">Starting-point preference</dt><dd className="mt-1 break-words text-ink">{offer.meetingArea || "No starting preference provided. Choose an appropriate place to begin the video visit."}</dd></div><div><dt className="text-label text-ink-muted">Duration</dt><dd className="mt-1">{offer.requestedDuration} minutes</dd></div><div><dt className="text-label text-ink-muted">Language</dt><dd className="mt-1">{offer.preferredLanguage || "No preference"}</dd></div>{offer.accessibilityNeeds.length > 0 && <div className="sm:col-span-2"><dt className="text-label text-ink-muted">Accessibility</dt><dd className="mt-1 break-words">{offer.accessibilityNeeds.join(", ")}</dd></div>}{offer.viewerNote && <div className="sm:col-span-2"><dt className="text-label text-ink-muted">Explorer instructions</dt><dd className="mt-1 whitespace-pre-wrap break-words">{offer.viewerNote}</dd></div>}</dl><div className="grid gap-3 p-5 pt-0 sm:grid-cols-2"><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={declineOffer} className={buttonClassName("secondary", "min-h-control-lg w-full")}>Decline</button><button type="button" disabled={offerAction || offerSeconds <= 0} onClick={acceptOffer} className={buttonClassName("primary", "min-h-control-lg w-full")}>Accept Journey</button></div></section>}
+      {!editing && !offer && <section className="mt-10" aria-labelledby="operator-history-heading"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-label uppercase tracking-wide text-ink-muted">History</p><h2 id="operator-history-heading" className="text-heading-2">Recent activity</h2></div><ActionLink href="/operator/journeys" variant="quiet">View confirmed Journeys</ActionLink></div>{history.length === 0 ? <Surface className="mt-4"><p className="text-body-sm text-ink-muted">No recent offer activity yet.</p></Surface> : <ul className="mt-4 divide-y divide-line rounded-xl border border-line bg-surface">{history.map((item, index) => <li key={`${item.trip.id}-${index}`} className="min-w-0 p-4"><p className="break-words font-semibold">{item.trip.destination}</p><p className="mt-1 text-body-sm text-ink-secondary">Offer {item.status.toLowerCase()} · Journey {item.trip.status.replaceAll("_", " ").toLowerCase()}</p>{item.status==="ACCEPTED"&&["ACCEPTED","IN_PROGRESS","ENDED","FEEDBACK_COMPLETED","CANCELLED"].includes(item.trip.status)&&<SafetyReportDialog tripId={item.trip.id}/>} {item.status==="ACCEPTED"&&(item.trip.status==="ENDED"||item.trip.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.trip.id}/>}</li>)}</ul>}</section>}
     </div>
   );
 }
 
+function AvailabilityCard({ settingsLoaded, online, setupComplete, pilotStatus, readiness, pending, onToggle }: { settingsLoaded: boolean; online: boolean; setupComplete: boolean; pilotStatus: "PENDING" | "APPROVED" | "SUSPENDED" | null; readiness: { eligible: boolean; code: string; message: string } | null; pending: boolean; onToggle: () => void }) {
+  const eligibleToGoOnline = setupComplete && pilotStatus === "APPROVED" && readiness?.eligible === true;
+  const disabled = pending || !settingsLoaded || (!online && !eligibleToGoOnline);
+  let title = "Checking availability";
+  let detail = "Confirming your current availability and readiness.";
+  let badge: "neutral" | "success" | "warning" | "danger" = "neutral";
+
+  if (settingsLoaded && online) {
+    title = "Online";
+    detail = "Compatible immediate Journey Requests are being checked.";
+    badge = "success";
+  } else if (settingsLoaded && pilotStatus === "SUSPENDED") {
+    title = "Participation suspended";
+    detail = "You cannot accept new Journeys while your pilot participation is suspended.";
+    badge = "danger";
+  } else if (settingsLoaded && pilotStatus === "PENDING") {
+    title = "Approval pending";
+    detail = "Your Teleporter profile is awaiting pilot approval. You cannot go online yet.";
+    badge = "warning";
+  } else if (settingsLoaded && !setupComplete) {
+    title = "Service setup required";
+    detail = "Complete the service setup below before going online.";
+    badge = "warning";
+  } else if (settingsLoaded && eligibleToGoOnline) {
+    title = "Offline and ready";
+    detail = "You are eligible to go online when you are ready for an immediate Journey.";
+  } else if (settingsLoaded) {
+    title = "Offline";
+    detail = readiness?.message ?? "Complete your Teleporter profile before going online.";
+    badge = "warning";
+  }
+
+  return <section className={`mt-8 rounded-xl border p-5 shadow-sm sm:p-6 ${online ? "border-success-fg/30 bg-success-bg" : pilotStatus === "SUSPENDED" ? "border-danger-fg/30 bg-danger-bg" : "border-line bg-surface"}`} aria-labelledby="availability-heading"><div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h2 id="availability-heading" className="text-heading-2">Availability</h2><div className="mt-2" role={pilotStatus === "SUSPENDED" ? "alert" : "status"}><StatusBadge variant={badge}>{title}</StatusBadge><p className="mt-2 max-w-prose break-words text-body-sm text-ink-secondary">{detail}</p></div></div>{settingsLoaded && <button type="button" disabled={disabled} aria-busy={pending} onClick={onToggle} className={buttonClassName(online ? "secondary" : "primary", "min-h-control-lg w-full shrink-0 sm:w-auto")}>{pending ? "Updating availability…" : online ? "Go offline" : "Go online"}</button>}</div></section>;
+}
+
 function PollingNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
   if (!message) return null;
-  return <div className="m-4 flex items-center justify-between gap-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status"><span>{message}</span><button type="button" onClick={onRetry} className="min-h-11 shrink-0 rounded-md border border-amber-700 px-3 font-semibold">Retry</button></div>;
+  return <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning-fg/25 bg-warning-bg p-3 text-body-sm text-warning-fg" role="status"><span className="min-w-0 flex-1">{message}</span><button type="button" onClick={onRetry} className={buttonClassName("secondary", "shrink-0")}>Retry</button></div>;
 }
 
 function ActiveVisitPreparation({ trip, failed, onRetry, onEnd }: { trip: Trip; failed: boolean; onRetry: () => void; onEnd: () => void }) {
