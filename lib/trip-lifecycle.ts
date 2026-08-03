@@ -97,16 +97,21 @@ export async function cancelTrip(
 ): Promise<LifecycleResult<Prisma.TripGetPayload<object>>> {
   try {
     return await serializable(db, async tx => {
-      const supplyLock = await tx.supplyCapacityClaim.findUnique({ where: { tripId }, select: { id: true, listingId: true, teleporterId: true } });
+      const supplyLock = await tx.supplyCapacityClaim.findUnique({ where: { tripId }, select: { id: true, listingId: true, teleporterId: true, occurrenceId:true } });
       if (supplyLock) {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SupplyListing" WHERE "id"=${supplyLock.listingId}::uuid FOR UPDATE`);
         await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${'phase6-claim-teleporter:' + supplyLock.teleporterId},0))`);
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SupplyCapacityClaim" WHERE "id"=${supplyLock.id}::uuid FOR UPDATE`);
+        if(supplyLock.occurrenceId)await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "GuidedExperienceOccurrence" WHERE "id"=${supplyLock.occurrenceId}::uuid FOR UPDATE`);
       }
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
       const trip = await tx.trip.findUnique({ where: { id: tripId }, include: {
         scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true, status: true }, take: 1 },
-        supplyCapacityClaim: { select: { id: true, status: true, listingId: true, liveMomentId: true, occurrenceId: true, startAt: true, endAt: true, listing: { select: { status: true } }, liveMoment: { select: { expiresAt: true } } } },
+        supplyCapacityClaim: { select: {
+          id: true, status: true, listingId: true, liveMomentId: true, occurrenceId: true, startAt: true, endAt: true,
+          listing: { select: { status: true, teleporter: { select: { role: true, accountStatus: true, operatorProfile: { select: { pilotStatus: true } }, safetyRestrictionsAffected: { where: { status: "ACTIVE", startsAt: { lte: now }, expiresAt: { gt: now } }, select: { id: true }, take: 1 } } } } },
+          liveMoment: { select: { expiresAt: true } }, occurrence: { select: { status: true, availabilityStart: true, availabilityEnd: true } },
+        } },
       } });
       if (!trip || !ownsTrip(trip, actorId, role)) return { ok: false, status: 404, error: "Not found" };
       if (trip.status === TripStatus.CANCELLED) return { ok: true, value: trip };
@@ -150,20 +155,18 @@ export async function cancelTrip(
       if (
         trip.status === TripStatus.ACCEPTED &&
         supplyClaim?.status === "COMMITTED" &&
-        supplyClaim.liveMomentId &&
-        !supplyClaim.occurrenceId &&
+        ((supplyClaim.liveMomentId&&!supplyClaim.occurrenceId&&supplyClaim.liveMoment?.expiresAt&&supplyClaim.liveMoment.expiresAt>now)||(!supplyClaim.liveMomentId&&supplyClaim.occurrenceId&&supplyClaim.occurrence?.status==="PUBLISHED"&&supplyClaim.occurrence.availabilityStart>now&&supplyClaim.occurrence.availabilityStart.getTime()===supplyClaim.startAt.getTime()&&supplyClaim.occurrence.availabilityEnd.getTime()===supplyClaim.endAt.getTime())) &&
         !trip.startedAt &&
         now < supplyClaim.startAt &&
         supplyClaim.listing.status === "PUBLISHED" &&
-        supplyClaim.liveMoment?.expiresAt &&
-        supplyClaim.liveMoment.expiresAt > now
+        (!supplyClaim.occurrenceId||(supplyClaim.listing.teleporter.role!==Role.ADMIN&&supplyClaim.listing.teleporter.accountStatus==="ACTIVE"&&supplyClaim.listing.teleporter.operatorProfile?.pilotStatus==="APPROVED"&&supplyClaim.listing.teleporter.safetyRestrictionsAffected.length===0))
       ) {
         await tx.supplyCapacityRestoration.create({ data: {
           claimId: supplyClaim.id,
           tripId: trip.id,
           listingId: supplyClaim.listingId,
           liveMomentId: supplyClaim.liveMomentId,
-          occurrenceId: null,
+          occurrenceId: supplyClaim.occurrenceId,
           startAt: supplyClaim.startAt,
           endAt: supplyClaim.endAt,
         } });

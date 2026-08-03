@@ -43,8 +43,9 @@ export async function createRescheduleProposal(db: Database, actorId: string, tr
   try {
     return await serializable(db, async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
-      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: true, scheduledReservations: { where: { status: "CONFIRMED" }, take: 2 } } });
+      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: true, supplyCapacityClaim:{select:{occurrenceId:true}},scheduledReservations: { where: { status: "CONFIRMED" }, take: 2 } } });
       if (!trip || !party(trip, actorId)) return fail(404, "Journey not found");
+      if(trip.supplyCapacityClaim?.occurrenceId)return fail(409,"Guided Experiences cannot be rescheduled. Cancel this Journey and book another available occurrence.");
       if (trip.status !== TripStatus.ACCEPTED || !trip.agreement || trip.immediate || trip.scheduledReservations.length !== 1) return fail(409, "Journey cannot be rescheduled");
       const current = trip.scheduledReservations[0];
       if (current.startAt.getTime() === startAt.getTime() && current.endAt.getTime() === endAt.getTime()) return fail(400, "Choose a different Journey time");
@@ -78,6 +79,7 @@ export async function getReschedulingState(db: Database, actorId: string, tripId
       agreement: { select: { id: true, agreedStartAt: true, agreedDurationMinutes: true } },
       scheduledReservations: { where: { status: "CONFIRMED" }, select: { id: true, agreementId: true, tripId: true, startAt: true, endAt: true }, take: 2 },
       rescheduleProposals: { where: { status: ScheduledJourneyRescheduleStatus.PENDING }, orderBy: { createdAt: "desc" }, take: 2 },
+      supplyCapacityClaim:{select:{occurrenceId:true}},
     },
   });
   if (!trip || !party(trip, actorId)) return fail(404, "Journey not found");
@@ -85,7 +87,7 @@ export async function getReschedulingState(db: Database, actorId: string, tripId
   const consistent = Boolean(reservation && trip.agreement && reservation.tripId === tripId && reservation.agreementId === trip.agreement.id);
   const proposal = trip.rescheduleProposals.length === 1 ? trip.rescheduleProposals[0] : null;
   const proposalConsistent = !proposal || Boolean(trip.agreement && reservation && proposal.agreementId === trip.agreement.id && proposal.fromReservationId === reservation.id && (proposal.proposerId === trip.viewerId || proposal.proposerId === trip.operatorId));
-  const eligible = trip.status === TripStatus.ACCEPTED && !trip.immediate && Boolean(trip.operatorId) && consistent && proposalConsistent && trip.rescheduleProposals.length <= 1;
+  const eligible = trip.status === TripStatus.ACCEPTED && !trip.immediate && !trip.supplyCapacityClaim?.occurrenceId && Boolean(trip.operatorId) && consistent && proposalConsistent && trip.rescheduleProposals.length <= 1;
   const legacyStart = !trip.scheduledReservations.length && trip.agreement ? trip.agreement.agreedStartAt : null;
   const legacyDuration = legacyStart && trip.agreement ? trip.agreement.agreedDurationMinutes : null;
   const currentStartAt = consistent ? reservation!.startAt : legacyStart;
@@ -100,9 +102,10 @@ export async function acceptRescheduleProposal(db: Database, actorId: string, tr
     return await serializable(db, async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Trip" WHERE "id" = ${tripId} FOR UPDATE`);
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ScheduledJourneyRescheduleProposal" WHERE "id" = ${proposalId}::uuid FOR UPDATE`);
-      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: true, scheduledReservations: { where: { status: "CONFIRMED" }, take: 2 } } });
+      const trip = await tx.trip.findUnique({ where: { id: tripId }, include: { agreement: true,supplyCapacityClaim:{select:{occurrenceId:true}}, scheduledReservations: { where: { status: "CONFIRMED" }, take: 2 } } });
       const proposal = await tx.scheduledJourneyRescheduleProposal.findUnique({ where: { id: proposalId } });
       if (!trip || !proposal || proposal.tripId !== tripId || proposal.agreementId !== trip.agreement?.id || !party(trip, actorId)) return fail(404, "Reschedule proposal not found");
+      if(trip.supplyCapacityClaim?.occurrenceId)return fail(409,"Guided Experiences cannot be rescheduled. Cancel this Journey and book another available occurrence.");
       if (proposal.proposerId === actorId) return fail(409, "The proposer cannot accept their own reschedule proposal");
       if (proposal.status === ScheduledJourneyRescheduleStatus.ACCEPTED) return { ok: true as const, value: safe(proposal, trip, actorId), accepted: false };
       if (proposal.status !== ScheduledJourneyRescheduleStatus.PENDING) return fail(409, "Reschedule proposal is no longer pending");

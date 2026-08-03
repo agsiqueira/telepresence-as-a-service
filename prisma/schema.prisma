@@ -674,26 +674,40 @@ model GuidedExperience {
   id          String                       @id @default(uuid()) @db.Uuid
   listing     SupplyListing                @relation(fields: [listingId], references: [id], onDelete: Restrict)
   listingId   String                       @unique @db.Uuid
+  title       String                       @db.VarChar(120)
+  description String                       @db.VarChar(2000)
   occurrences GuidedExperienceOccurrence[]
 }
 
 model GuidedExperienceOccurrence {
-  id                    String                      @id @default(uuid()) @db.Uuid
-  guidedExperience      GuidedExperience            @relation(fields: [guidedExperienceId], references: [id], onDelete: Restrict)
-  guidedExperienceId    String                      @db.Uuid
-  status                SupplyStatus                @default(DRAFT)
-  availabilityStart     DateTime                    @db.Timestamptz(3)
-  availabilityEnd       DateTime                    @db.Timestamptz(3)
-  capacity              Int
-  createdAt             DateTime                    @default(now()) @db.Timestamptz(3)
-  publishedAt           DateTime?                   @db.Timestamptz(3)
-  pausedAt              DateTime?                   @db.Timestamptz(3)
-  archivedAt            DateTime?                   @db.Timestamptz(3)
-  claims                SupplyCapacityClaim[]
-  capacityRestorations  SupplyCapacityRestoration[]
-  sourceJourneyRequests JourneyRequest[]            @relation("SupplyJourneyRequestOccurrences")
-  sourceProposals       Proposal[]                  @relation("SupplyProposalOccurrences")
+  id                      String                      @id @default(uuid()) @db.Uuid
+  guidedExperience        GuidedExperience            @relation(fields: [guidedExperienceId], references: [id], onDelete: Restrict)
+  guidedExperienceId      String                      @db.Uuid
+  status                  SupplyStatus                @default(DRAFT)
+  availabilityStart       DateTime                    @db.Timestamptz(3)
+  availabilityEnd         DateTime                    @db.Timestamptz(3)
+  capacity                Int
+  createdAt               DateTime                    @default(now()) @db.Timestamptz(3)
+  publishedAt             DateTime?                   @db.Timestamptz(3)
+  pausedAt                DateTime?                   @db.Timestamptz(3)
+  archivedAt              DateTime?                   @db.Timestamptz(3)
+  supplyListingVersion    Int?
+  titleSnapshot           String?                     @db.VarChar(120)
+  descriptionSnapshot     String?                     @db.VarChar(2000)
+  publicPlaceSnapshot     String?                     @db.VarChar(120)
+  coarseLocationSnapshot  String?                     @db.VarChar(120)
+  durationMinutesSnapshot Int?
+  priceMinorSnapshot      Int?
+  currencySnapshot        String?                     @db.Char(3)
+  replacesOccurrence      GuidedExperienceOccurrence? @relation("GuidedOccurrenceReplacement", fields: [replacesOccurrenceId], references: [id], onDelete: Restrict)
+  replacesOccurrenceId    String?                     @unique @db.Uuid
+  replacement             GuidedExperienceOccurrence? @relation("GuidedOccurrenceReplacement")
+  claims                  SupplyCapacityClaim[]
+  capacityRestorations    SupplyCapacityRestoration[]
+  sourceJourneyRequests   JourneyRequest[]            @relation("SupplyJourneyRequestOccurrences")
+  sourceProposals         Proposal[]                  @relation("SupplyProposalOccurrences")
 
+  @@unique([guidedExperienceId, availabilityStart])
   @@index([guidedExperienceId, status, availabilityStart])
   @@index([status, availabilityStart, availabilityEnd])
 }

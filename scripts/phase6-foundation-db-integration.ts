@@ -10,7 +10,7 @@ async function main(){
  assert.equal(listing.liveMoment?.listingId,listing.id);pass("valid mode-specific supply creation preserves authoritative owner and terms");
  await assert.rejects(db.supplyListing.create({data:{teleporterId:teleporter.id,type:SupplyType.LIVE_MOMENT,publicPlaceName:"x",coarseLocation:"y",durationMinutes:0,priceMinor:1,currency:"USD",capacity:1}}));
  await assert.rejects(db.supplyListing.create({data:{teleporterId:teleporter.id,type:SupplyType.LIVE_MOMENT,publicPlaceName:"x",coarseLocation:"y",durationMinutes:1,priceMinor:0,currency:"usd",capacity:0}}));pass("invalid commercial and duration authority is rejected");
- await assert.rejects(db.guidedExperience.create({data:{listingId:listing.id}}));
+ await assert.rejects(db.guidedExperience.create({data:{listingId:listing.id,title:"Bad",description:"Still invalid because the listing has the wrong supply type."}}));
  await assert.rejects(db.liveMoment.update({where:{id:listing.liveMoment!.id},data:{availabilityEnd:new Date(end.getTime()+1)}}));
  await assert.rejects(db.supplyListing.update({where:{id:listing.id},data:{teleporterId:other.id}}));pass("mode mismatch and ownership/window rewrites are rejected");
  const first=await claim(listing,explorer.id,start);assert.equal(first.expiresAt.getTime()-first.createdAt.getTime(),600000);pass("database clock creates an exact ten-minute claim");

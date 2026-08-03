@@ -8,6 +8,7 @@ import JourneyReviewPanel from "@/components/JourneyReviewPanel";
 import SafetyReportDialog from "@/components/SafetyReportDialog";
 import AccountSafetyRestrictionNotice from "@/components/AccountSafetyRestrictionNotice";
 import LiveMomentManager from "@/components/LiveMomentManager";
+import GuidedExperienceManager from "@/components/GuidedExperienceManager";
 import { createResilientPoller, requireJsonResponse } from "@/lib/resilient-poller";
 
 type Trip = {
@@ -358,6 +359,7 @@ export default function OperatorPage() {
       {!editing && !offer && <section className="mt-8" aria-labelledby="operator-history-heading"><h2 id="operator-history-heading" className="text-xl font-semibold">Offer and visit history</h2>{history.length === 0 ? <p className="mt-2 text-sm text-gray-500">No offer history yet.</p> : <ul className="mt-3 divide-y rounded-xl border">{history.map((item, index) => <li key={`${item.trip.id}-${index}`} className="p-3"><p className="font-medium">{item.trip.destination}</p><p className="text-sm text-gray-600">Offer {item.status.toLowerCase()} · Visit {item.trip.status.replaceAll("_", " ").toLowerCase()}</p>{item.status==="ACCEPTED"&&["ACCEPTED","IN_PROGRESS","ENDED","FEEDBACK_COMPLETED","CANCELLED"].includes(item.trip.status)&&<SafetyReportDialog tripId={item.trip.id}/>} {item.status==="ACCEPTED"&&(item.trip.status==="ENDED"||item.trip.status==="FEEDBACK_COMPLETED")&&<JourneyReviewPanel tripId={item.trip.id}/>}</li>)}</ul>}</section>}
       <TeleporterAgreements />
       <LiveMomentManager />
+      <GuidedExperienceManager />
       <ProfileSettings role="operator" />
     </div>
   );

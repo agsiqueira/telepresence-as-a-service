@@ -89,24 +89,24 @@ export async function createLiveMomentFoundation(db: PrismaClient, teleporterId:
 }
 
 export async function createGuidedExperienceFoundation(db: PrismaClient, teleporterId: string, input: unknown) {
-  const body = exact(input, ["publicPlaceName", "coarseLocation", "durationMinutes", "priceMinor", "currency", "capacity"] as const);
+  const body = exact(input, ["title", "description", "publicPlaceName", "coarseLocation", "durationMinutes", "priceMinor", "currency"] as const);
+  const title=bounded(body.title,120),description=bounded(body.description,2000);if(title.length<3||description.length<20)throw new SupplyFoundationError("INVALID",400);
   try {
     return await db.$transaction(async tx => {
       await requireMutationActor(tx, teleporterId, true);
-      return tx.supplyListing.create({ data: { teleporterId, type: SupplyType.GUIDED_EXPERIENCE, publicPlaceName: bounded(body.publicPlaceName, 120), coarseLocation: bounded(body.coarseLocation, 120), durationMinutes: integer(body.durationMinutes, 1, 1440), priceMinor: integer(body.priceMinor, 1, 100_000_000), currency: currency(body.currency), capacity: integer(body.capacity, 1, 1000), guidedExperience: { create: {} } }, select: { id: true, type: true, status: true, version: true, guidedExperience: { select: { id: true } } } });
+      return tx.supplyListing.create({ data: { teleporterId, type: SupplyType.GUIDED_EXPERIENCE, publicPlaceName: bounded(body.publicPlaceName, 120), coarseLocation: bounded(body.coarseLocation, 120), durationMinutes: integer(body.durationMinutes, 1, 1440), priceMinor: integer(body.priceMinor, 1, 100_000_000), currency: currency(body.currency), capacity: 1, guidedExperience: { create: { title, description } } }, select: { id: true, type: true, status: true, version: true, guidedExperience: { select: { id: true, title: true, description: true } } } });
     });
   } catch (error) { mapDatabaseError(error); }
 }
 
 export async function createGuidedOccurrenceFoundation(db: PrismaClient, teleporterId: string, listingId: string, input: unknown) {
-  const body = exact(input, ["availabilityStart", "availabilityEnd", "capacity"] as const), availabilityStart = instant(body.availabilityStart), availabilityEnd = instant(body.availabilityEnd);
-  if (availabilityStart >= availabilityEnd) throw new SupplyFoundationError("INVALID", 400);
+  const body = exact(input, ["startAt"] as const), availabilityStart = instant(body.startAt);
   try {
     return await db.$transaction(async tx => {
       await requireMutationActor(tx, teleporterId, true);
-      const listing = await tx.supplyListing.findFirst({ where: { id: listingId, teleporterId, type: SupplyType.GUIDED_EXPERIENCE }, select: { guidedExperience: { select: { id: true } } } });
+      const listing = await tx.supplyListing.findFirst({ where: { id: listingId, teleporterId, type: SupplyType.GUIDED_EXPERIENCE }, select: { durationMinutes: true, guidedExperience: { select: { id: true } } } });
       if (!listing?.guidedExperience) throw new SupplyFoundationError("NOT_FOUND", 404);
-      return tx.guidedExperienceOccurrence.create({ data: { guidedExperienceId: listing.guidedExperience.id, availabilityStart, availabilityEnd, capacity: integer(body.capacity, 1, 1000) }, select: { id: true, status: true, availabilityStart: true, availabilityEnd: true, capacity: true } });
+      return tx.guidedExperienceOccurrence.create({ data: { guidedExperienceId: listing.guidedExperience.id, availabilityStart, availabilityEnd: new Date(availabilityStart.getTime()+listing.durationMinutes*60_000), capacity: 1 }, select: { id: true, status: true, availabilityStart: true, availabilityEnd: true, capacity: true } });
     });
   } catch (error) { mapDatabaseError(error); }
 }

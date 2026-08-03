@@ -24,6 +24,7 @@ async function committedBooking(listingId: string, liveMomentId: string, explore
 
 async function main() {
   const t = await user("Teleporter"), e = await user("Explorer"), e2 = await user("Explorer 2");
+  await db.operatorProfile.create({ data: { userId: t.id, operatingArea: "Downtown", serviceRadiusKm: 10, supportsCustom: true, languages: ["English"], accessibilityCapabilities: [], durationOptions: [30], pilotStatus: "APPROVED" } });
   const start = new Date(Date.now() + 3_600_000), end = new Date(start.getTime() + 7_200_000);
   const listing = await db.supplyListing.create({ data: { teleporterId: t.id, type: SupplyType.LIVE_MOMENT, publicPlaceName: "Museum", coarseLocation: "Downtown", durationMinutes: 30, priceMinor: 2500, currency: "USD", capacity: 1 } });
   const liveId = randomUUID();

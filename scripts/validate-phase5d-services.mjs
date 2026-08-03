@@ -5,7 +5,7 @@ import { OperatorApplicationStatus, OperatorPilotStatus, Prisma, Role } from "@p
 
 const compile = spawnSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "scripts/tsconfig.phase3-db.json"], { stdio: "inherit" });
 if (compile.status !== 0) process.exit(compile.status ?? 1);
-for (const module of ["marketplace", "role-transitions", "operator-applications"]) {
+for (const module of ["marketplace", "role-transitions", "operator-applications", "safety-restriction-lock"]) {
   const path = `.phase3-test-build/lib/${module}.js`;
   writeFileSync(path, readFileSync(path, "utf8").replace('require("server-only");', ""));
 }

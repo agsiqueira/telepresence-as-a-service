@@ -1,0 +1,2 @@
+import{NextResponse}from"next/server";import{db}from"@/lib/db";import{authorizeExplorerApi}from"@/lib/current-user";import{discoverGuidedExperiences}from"@/lib/guided-experiences";
+export async function GET(){const actor=await authorizeExplorerApi();if(!actor.ok)return actor.response;return NextResponse.json({guidedExperiences:await discoverGuidedExperiences(db)},{headers:{"Cache-Control":"no-store"}})}
