@@ -75,6 +75,7 @@
     "test:unfar:phase5d1:db": "node scripts/run-phase5d1-review-db-tests.mjs",
     "test:unfar:phase5d2": "node scripts/validate-unfar-phase5d2-ui.mjs",
     "test:phase5f": "node scripts/validate-phase5f-simulated-tips.mjs",
+    "test:phase5f:polling": "node scripts/validate-simulated-tip-polling.mjs",
     "test:phase5f:db": "node scripts/run-phase5f-db-tests.mjs",
     "test:phase6:foundation": "node scripts/validate-phase6-foundation.mjs",
     "test:phase6:foundation:db": "node scripts/run-phase6-foundation-db-tests.mjs",
