@@ -121,6 +121,42 @@ Granular Phase 8.4 scenarios:
 | HARD-10 | Refresh during mutation | Manual test required | Server recovery/idempotency is database-proven; browser refresh timing was not executed. |
 | HARD-11 | Browser Back/Forward after mutation | Manual test required | No browser history mutation flow was available without authentication. |
 
+## Phase 8.5 LiveKit and device evidence overlay
+
+LiveKit configuration was present and the configured server was reachable, but no authorized paired accounts, separate authenticated role contexts, or physical mobile device were available. Static permissions and token ownership are not treated as real-room evidence.
+
+| Entries | Phase 8.5 classification | Evidence or limitation |
+|---|---|---|
+| `IM-01`, `IM-02`, `LIVE-01` | Passed — source inspection and automated; Blocked — paired role | Journey creation, acceptance, start, restoration, polling, and ending ownership remain structurally protected. No paired live room was established. |
+| `LIVE-02` | Blocked — paired role | Configuration/reachability alone is not token, room, or media passage. |
+| `LIVE-03` | Passed — source inspection; Blocked — paired role | Explorer token grant remains microphone-only and the call site disables camera. No real track publication or remote receipt was observed. |
+| `LIVE-04` | Passed — automated; Blocked — mobile device unavailable | Camera-switch utility preserves the current track on replacement failure. No physical front/rear switch was executed. |
+| `LIVE-05` | Passed — source inspection; Blocked — paired role | Chat remains LiveKit-backed with send guarding and unread state. No message crossed a real room. |
+| `LIVE-06` | Passed — source inspection; Blocked — network tooling unavailable | LiveKit `ConnectionState` presentation remains authoritative; no real interruption/reconnection was executed. |
+| `LIVE-07` | Passed — source inspection and automated; Blocked — paired role | End duplicate guard, confirmation, authoritative disconnect, and teardown remain present. Remote media teardown was not observed. |
+| `A11Y-01`, `A11Y-02` | Manual test required | Live keyboard and screen-reader behavior were not executed in an authenticated room. |
+| `RESP-01` | Passed — source inspection; Blocked — mobile device unavailable | `100dvh`, safe areas, bounded chat/dialogs, and narrow controls remain present; no physical viewport was tested. |
+
+Granular Phase 8.5 scenarios:
+
+| ID | Scenario | Status |
+|---|---|---|
+| LIVE-08 | Desktop paired connection | Blocked — paired role |
+| LIVE-09 | Mobile Teleporter | Blocked — mobile device unavailable |
+| LIVE-10 | Mobile Explorer | Blocked — mobile device unavailable |
+| LIVE-11 | Camera permission denied | Blocked — desktop device unavailable |
+| LIVE-12 | Microphone permission denied | Blocked — desktop device unavailable |
+| LIVE-13 | Physical camera-switch success | Blocked — mobile device unavailable |
+| LIVE-14 | Physical camera-switch failure | Blocked — mobile device unavailable |
+| LIVE-15 | Remote participant leave and return | Blocked — paired role |
+| LIVE-16 | Reconnection success | Blocked — network tooling unavailable |
+| LIVE-17 | Persistent disconnect | Blocked — network tooling unavailable |
+| LIVE-18 | Explorer refresh restoration | Blocked — authentication |
+| LIVE-19 | Teleporter refresh restoration | Blocked — authentication |
+| LIVE-20 | Chat unread state over transport | Blocked — paired role |
+| LIVE-21 | End during reconnect | Blocked — network tooling unavailable |
+| LIVE-22 | Authoritative remote end | Blocked — paired role |
+
 ## Classification summary
 
 - **Structurally validated:** canonical route files, guards, endpoint ownership, privacy markers, role-specific `VideoRoom` call sites, loading/failure/retry markers, and responsive/accessibility source markers.

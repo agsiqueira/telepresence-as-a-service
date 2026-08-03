@@ -102,6 +102,7 @@
     "test:phase8b": "node scripts/validate-phase8b-authenticated-lifecycle.mjs",
     "test:phase8c": "node scripts/validate-phase8c-responsive-accessibility.mjs",
     "test:phase8d": "node scripts/validate-phase8d-failure-concurrency.mjs",
+    "test:phase8e": "node scripts/validate-phase8e-livekit-device.mjs",
     "test:feedback-reload": "node scripts/validate-feedback-reload-remediation.mjs",
     "test:safety-reporting:phase1": "node scripts/validate-safety-reporting-phase1.mjs",
     "test:safety-reporting:phase1:db": "node scripts/run-safety-reporting-phase1-db-tests.mjs",
